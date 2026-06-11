@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Book } from "@ai-smartbook/schema";
 
 /**
@@ -8,6 +8,13 @@ import type { Book } from "@ai-smartbook/schema";
  */
 export function BookCover({ book, size = "card" }: { book: Book; size?: "card" | "hero" }) {
   const [failed, setFailed] = useState(false);
+
+  // Reset the error state when the cover source changes so a valid cover on the
+  // next book is not stuck showing the previous book's fallback.
+  useEffect(() => {
+    setFailed(false);
+  }, [book.coverUrl, book.title]);
+
   const showImage = !!book.coverUrl && !failed;
 
   if (showImage) {

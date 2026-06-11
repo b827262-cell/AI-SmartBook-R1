@@ -13,6 +13,12 @@ export function BookReaderPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Reset chapter selection when switching books so a stale A-book chapter id
+  // never filters B-book contents.
+  useEffect(() => {
+    setActiveChapter(null);
+  }, [bookId]);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([studentClient.getBook(bookId), studentClient.getContents(bookId)])
@@ -24,10 +30,16 @@ export function BookReaderPage() {
       .finally(() => setLoading(false));
   }, [bookId]);
 
+  // Guard against a stale chapter id that does not belong to the current book.
+  const safeActiveChapter = useMemo(
+    () => ((book?.chapters ?? []).some((ch) => ch.id === activeChapter) ? activeChapter : null),
+    [book, activeChapter]
+  );
+
   // Contents shown for the selected chapter (or all when none selected).
   const shownContents = useMemo(
-    () => (activeChapter ? contents.filter((c) => c.chapterId === activeChapter) : contents),
-    [contents, activeChapter]
+    () => (safeActiveChapter ? contents.filter((c) => c.chapterId === safeActiveChapter) : contents),
+    [contents, safeActiveChapter]
   );
 
   if (loading) return <p className="muted">載入中…</p>;
@@ -63,7 +75,7 @@ export function BookReaderPage() {
             <ul className="chapter-list">
               <li>
                 <button
-                  className={activeChapter === null ? "active" : ""}
+                  className={safeActiveChapter === null ? "active" : ""}
                   onClick={() => setActiveChapter(null)}
                 >
                   全部內容
@@ -72,12 +84,12 @@ export function BookReaderPage() {
               {chapters.map((ch) => (
                 <li key={ch.id}>
                   <button
-                    className={activeChapter === ch.id ? "active" : ""}
+                    className={safeActiveChapter === ch.id ? "active" : ""}
                     onClick={() => setActiveChapter(ch.id)}
                   >
                     <span className="ch-order">{ch.orderIndex + 1}.</span> {ch.title}
                   </button>
-                  {activeChapter === ch.id && ch.summary && (
+                  {safeActiveChapter === ch.id && ch.summary && (
                     <p className="ch-summary">{ch.summary}</p>
                   )}
                 </li>
