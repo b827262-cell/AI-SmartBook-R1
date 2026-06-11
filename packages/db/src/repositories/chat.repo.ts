@@ -55,6 +55,26 @@ export function makeChatRepo(db: Db) {
         .orderBy(asc(chatMessages.createdAt))
         .all()
         .map(toMessage);
+    },
+
+    /** All chat sessions (used by admin dashboard / accounts aggregates). */
+    listSessions(): ChatSession[] {
+      return db.select().from(chatSessions).orderBy(asc(chatSessions.createdAt)).all();
+    },
+
+    /** All chat messages across sessions (admin dashboard aggregates). */
+    listAllMessages(): ChatMessage[] {
+      return db
+        .select()
+        .from(chatMessages)
+        .orderBy(asc(chatMessages.createdAt))
+        .all()
+        .map(toMessage);
+    },
+
+    /** Hard-delete a single message (admin student-question removal). */
+    deleteMessage(id: string): void {
+      db.delete(chatMessages).where(eq(chatMessages.id, id)).run();
     }
   };
 }

@@ -578,6 +578,134 @@ app.get("/api/student/books/:bookId/chat-sessions/:sessionId", (req, res) => {
   res.json({ sessionId: session.id, messages: repos.chat.findMessages(session.id) });
 });
 
+// ---- Admin dashboard / accounts ------------------------------------------
+// NOTE: there is no dedicated users/accounts table and the front-end does not
+// persist a userAgent or login method, so "accounts" are derived from chat
+// sessions (one visitor session = one account proxy) and device/browser are
+// reported as 未知. Online uses a 15-minute last-activity window. No schema
+// change is made here.
+const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+
+/** Local-timezone YYYY-MM-DD key (avoids UTC cross-day miscounts). */
+function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Inclusive lower bound (ms epoch) for a dashboard range filter. */
+function rangeStartMs(range: string): number {
+  const now = Date.now();
+  if (range === "week") return now - 7 * 86_400_000;
+  if (range === "month") return now - 30 * 86_400_000;
+  return 0; // "all"
+}
+
+/** Last-activity time per session = latest message, else session createdAt. */
+function lastSeenBySession(messages: { sessionId: string; createdAt: string }[]) {
+  const map = new Map<string, number>();
+  for (const m of messages) {
+    const t = Date.parse(m.createdAt);
+    if (t > (map.get(m.sessionId) ?? 0)) map.set(m.sessionId, t);
+  }
+  return map;
+}
+
+app.get("/api/admin/dashboard/stats", (req, res) => {
+  const range = String(req.query.range || "month");
+  const sessions = repos.chat.listSessions();
+  const messages = repos.chat.listAllMessages();
+  const now = Date.now();
+  const lastSeen = lastSeenBySession(messages);
+
+  // One account proxy per session (no real user identity is tracked).
+  const accountLast = sessions.map((s) => lastSeen.get(s.id) ?? Date.parse(s.createdAt));
+  const totalUsers = accountLast.length;
+  const activeUsers = accountLast.filter((t) => now - t <= ONLINE_WINDOW_MS).length;
+  const totalConversations = sessions.length;
+  const totalMessages = messages.length;
+
+  // Daily trend = student question records per local day, within range. This is
+  // the same source as the student-question list so the two always agree.
+  const start = rangeStartMs(range);
+  const dayMap = new Map<string, number>();
+  for (const m of messages) {
+    if (m.role !== "user") continue;
+    if (Date.parse(m.createdAt) < start) continue;
+    const key = localDateKey(m.createdAt);
+    dayMap.set(key, (dayMap.get(key) ?? 0) + 1);
+  }
+  const dailyConversations = [...dayMap.entries()]
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  res.json({ totalUsers, activeUsers, totalConversations, totalMessages, dailyConversations });
+});
+
+app.get("/api/admin/accounts", (_req, res) => {
+  const sessions = repos.chat.listSessions();
+  const messages = repos.chat.listAllMessages();
+  const now = Date.now();
+  const lastSeen = lastSeenBySession(messages);
+
+  const accounts = sessions
+    .map((s) => {
+      const last = lastSeen.get(s.id) ?? Date.parse(s.createdAt);
+      return {
+        id: s.userId || s.id,
+        name: s.title?.trim() || "匿名訪客",
+        loginMethod: s.userId ? "帳號登入" : "匿名進入",
+        deviceType: "未知", // userAgent is not persisted
+        browser: "未知",
+        lastSeenAt: new Date(last).toISOString(),
+        online: now - last <= ONLINE_WINDOW_MS
+      };
+    })
+    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+
+  res.json({ accounts });
+});
+
+app.get("/api/admin/student-questions", (_req, res) => {
+  const sessions = repos.chat.listSessions();
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  const bookById = new Map(repos.books.findAll().map((b) => [b.id, b]));
+  const messages = repos.chat.listAllMessages();
+
+  const questions = messages
+    .filter((m) => m.role === "user")
+    .map((m) => {
+      const session = sessionById.get(m.sessionId);
+      const book = session ? bookById.get(session.bookId) : undefined;
+      return {
+        id: m.id,
+        sessionId: m.sessionId,
+        student: "匿名訪客",
+        subject: book?.category || "未分類",
+        content: m.content,
+        createdAt: m.createdAt
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  res.json({ questions });
+});
+
+app.delete("/api/admin/student-questions/:id", (req, res) => {
+  repos.chat.deleteMessage(String(req.params.id));
+  res.json({ deleted: true });
+});
+
+app.post("/api/admin/student-questions/delete", (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? (req.body.ids as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+  for (const id of ids) repos.chat.deleteMessage(id);
+  res.json({ deleted: ids.length });
+});
+
 const port = Number(process.env.ADMIN_API_PORT || 4300);
 app.listen(port, () => {
   console.log(

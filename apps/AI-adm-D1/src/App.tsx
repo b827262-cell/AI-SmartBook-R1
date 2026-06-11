@@ -1,38 +1,30 @@
-import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AdminShell } from "./components/admin/AdminShell";
+import { AdminDashboardPage } from "./pages/AdminDashboardPage";
+import { AdminAccountsPage } from "./pages/AdminAccountsPage";
 import { BooksPage } from "./pages/BooksPage";
 import { NewBookPage } from "./pages/NewBookPage";
 import { BookDetail } from "./pages/BookDetail";
-
-function Sidebar() {
-  return (
-    <aside className="adm-side">
-      <h1>📚 AI-adm-D1</h1>
-      <nav>
-        <Link to="/admin/books">書本管理</Link>
-        <Link to="/admin/books/new">新增書本</Link>
-      </nav>
-      <p className="muted" style={{ marginTop: 24, color: "#64748b" }}>
-        Phase 0.5 智能書本後台
-      </p>
-    </aside>
-  );
-}
+import { ChaptersPage } from "./pages/ChaptersPage";
+import { QaPage } from "./pages/QaPage";
 
 export function App() {
   return (
     <BrowserRouter>
-      <div className="adm-shell">
-        <Sidebar />
-        <main className="adm-main">
-          <Routes>
-            <Route path="/" element={<Navigate to="/admin/books" replace />} />
-            <Route path="/admin/books" element={<BooksPage />} />
-            <Route path="/admin/books/new" element={<NewBookPage />} />
-            <Route path="/admin/books/:bookId/*" element={<BookDetail />} />
-            <Route path="*" element={<Navigate to="/admin/books" replace />} />
-          </Routes>
-        </main>
-      </div>
+      <AdminShell>
+        <Routes>
+          <Route path="/" element={<Navigate to="/admin" replace />} />
+          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/accounts" element={<AdminAccountsPage />} />
+          <Route path="/admin/books" element={<BooksPage />} />
+          <Route path="/admin/books/new" element={<NewBookPage />} />
+          {/* Dedicated reader-management pages take precedence over the tabbed detail. */}
+          <Route path="/admin/books/:bookId/chapters" element={<ChaptersPage />} />
+          <Route path="/admin/books/:bookId/qa" element={<QaPage />} />
+          <Route path="/admin/books/:bookId/*" element={<BookDetail />} />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
+        </Routes>
+      </AdminShell>
     </BrowserRouter>
   );
 }

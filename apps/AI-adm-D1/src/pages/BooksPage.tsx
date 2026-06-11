@@ -1,51 +1,103 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Book } from "@ai-smartbook/schema";
 import { adminApi } from "../api";
+import { AdminPageHeader } from "../components/admin/AdminPageHeader";
+import { AdminCard } from "../components/admin/AdminCard";
+import { AdminErrorCard } from "../components/admin/AdminErrorCard";
 
 export function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    adminApi
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
+    return adminApi
       .listBooks()
       .then((d) => setBooks(d.books))
-      .catch((e) => setError(String(e.message)))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  return (
-    <div>
-      <div className="row between" style={{ marginBottom: 18 }}>
-        <h2 style={{ margin: 0 }}>書本管理</h2>
-        <Link className="btn" to="/admin/books/new">
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const header = (
+    <AdminPageHeader
+      title="智能書本管理"
+      subtitle="管理書本上架、章節與知識問答"
+      actions={
+        <Link className="admin-btn" to="/admin/books/new">
           + 新增書本
         </Link>
+      }
+    />
+  );
+
+  if (error) {
+    return (
+      <div>
+        {header}
+        <AdminErrorCard
+          title="書本列表讀取失敗"
+          description="後端目前無法回應，請確認 API Server 是否啟動，或稍後重新整理。"
+          code={error}
+          onRetry={() => void load()}
+        />
       </div>
-      {error && <p className="error">{error}</p>}
-      {loading ? (
-        <p className="muted">載入中…</p>
-      ) : books.length === 0 ? (
-        <div className="card">尚無書本，請先新增。</div>
-      ) : (
-        <div className="book-grid">
-          {books.map((b) => (
-            <Link key={b.id} to={`/admin/books/${b.id}`} className="card" style={{ display: "block" }}>
-              <div className="row between">
-                <strong>{b.title}</strong>
-                <span className={`badge ${b.status}`}>{b.status}</span>
-              </div>
-              <p className="muted" style={{ marginBottom: 4 }}>類科：{b.category || "未分類"}</p>
-              {b.subtitle && <p className="muted">{b.subtitle}</p>}
-              <p className="muted" style={{ marginBottom: 0 }}>
-                {b.description?.slice(0, 60) || "（無描述）"}
-              </p>
-            </Link>
-          ))}
-        </div>
-      )}
+    );
+  }
+
+  return (
+    <div>
+      {header}
+      <AdminCard title={`書本列表（${books.length}）`}>
+        {loading ? (
+          <p className="muted">載入中…</p>
+        ) : books.length === 0 ? (
+          <p className="muted">尚無書本，請先新增。</p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>書名</th>
+                  <th>類科</th>
+                  <th>作者</th>
+                  <th>狀態</th>
+                  <th>章節數</th>
+                  <th>Q&A</th>
+                  <th>建立時間</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {books.map((b) => (
+                  <tr key={b.id}>
+                    <td><strong>{b.title}</strong></td>
+                    <td>{b.category || "未分類"}</td>
+                    <td>{b.subtitle || "—"}</td>
+                    <td><span className={`badge ${b.status}`}>{b.status}</span></td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td className="muted">{new Date(b.createdAt).toLocaleDateString("zh-Hant")}</td>
+                    <td>
+                      <div className="admin-row-actions">
+                        <Link className="admin-link-btn" to={`/admin/books/${b.id}/chapters`}>查看章節</Link>
+                        <Link className="admin-link-btn" to={`/admin/books/${b.id}/qa`}>管理 Q&A</Link>
+                        <Link className="admin-link-btn" to={`/admin/books/${b.id}`}>編輯 / 檢視</Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminCard>
     </div>
   );
 }

@@ -103,5 +103,57 @@ export const adminApi = {
     http<{ logs: BookQaLog[] }>(`/api/admin/books/${bookId}/qa-logs`),
 
   getJobs: (bookId: string) =>
-    http<{ jobs: BookAiJob[] }>(`/api/admin/books/${bookId}/ai-jobs`)
+    http<{ jobs: BookAiJob[] }>(`/api/admin/books/${bookId}/ai-jobs`),
+
+  // ---- Dashboard / accounts ----------------------------------------------
+  getDashboardStats: (range: DashboardRange = "month") =>
+    http<AdminDashboardStats>(`/api/admin/dashboard/stats?range=${range}`),
+
+  listAccounts: () => http<{ accounts: AdminAccount[] }>("/api/admin/accounts"),
+
+  listStudentQuestions: () =>
+    http<{ questions: StudentQuestion[] }>("/api/admin/student-questions"),
+
+  deleteStudentQuestion: (id: string) =>
+    http<{ deleted: boolean }>(`/api/admin/student-questions/${id}`, { method: "DELETE" }),
+
+  deleteStudentQuestions: (ids: string[]) =>
+    http<{ deleted: number }>("/api/admin/student-questions/delete", {
+      method: "POST",
+      body: JSON.stringify({ ids })
+    })
 };
+
+export type DashboardRange = "week" | "month" | "all";
+
+export interface DailyConversationPoint {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface AdminDashboardStats {
+  totalUsers: number;
+  activeUsers: number;
+  totalConversations: number;
+  totalMessages: number;
+  dailyConversations: DailyConversationPoint[];
+}
+
+export interface AdminAccount {
+  id: string;
+  name: string;
+  loginMethod: string;
+  deviceType: string;
+  browser: string;
+  lastSeenAt: string;
+  online: boolean;
+}
+
+export interface StudentQuestion {
+  id: string;
+  sessionId: string;
+  student: string;
+  subject: string;
+  content: string;
+  createdAt: string;
+}
