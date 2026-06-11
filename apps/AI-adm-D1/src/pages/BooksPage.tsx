@@ -37,6 +37,7 @@ export function BooksPage() {
                 <strong>{b.title}</strong>
                 <span className={`badge ${b.status}`}>{b.status}</span>
               </div>
+              <p className="muted" style={{ marginBottom: 4 }}>類科：{b.category || "未分類"}</p>
               {b.subtitle && <p className="muted">{b.subtitle}</p>}
               <p className="muted" style={{ marginBottom: 0 }}>
                 {b.description?.slice(0, 60) || "（無描述）"}
