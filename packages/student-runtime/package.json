@@ -11,9 +11,12 @@
     "lint": "echo \"lint placeholder\""
   },
   "devDependencies": {
+    "@types/node": "latest",
+    "@types/better-sqlite3": "latest",
     "typescript": "latest"
   },
   "dependencies": {
-    "@ai-smartbook/schema": "workspace:*"
+    "@ai-smartbook/schema": "workspace:*",
+    "better-sqlite3": "latest"
   }
 }

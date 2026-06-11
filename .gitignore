@@ -1,5 +1,7 @@
 node_modules
+.pnpm-store
 dist
+dist-server
 build
 .env
 .env.*
@@ -11,5 +13,11 @@ tmp_*.json
 .DS_Store
 data/*.db
 data/*.sqlite
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
 uploads
 exports/*.json
+tmp_*.ts

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
+    "server:build": "esbuild server/stu-api.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist-server/stu-api.mjs --external:better-sqlite3 --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\"",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"lint placeholder\"",
     "server:dev": "tsx server/stu-api.ts"
@@ -14,12 +15,19 @@
     "@ai-smartbook/schema": "workspace:*",
     "@ai-smartbook/ui": "workspace:*",
     "@ai-smartbook/student-runtime": "workspace:*",
+    "better-sqlite3": "latest",
+    "express": "^4.19.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "latest",
+    "esbuild": "latest",
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "typescript": "latest",
     "vite": "latest",
     "tsx": "latest"

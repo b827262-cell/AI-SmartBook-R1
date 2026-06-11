@@ -1,14 +1,16 @@
 [Unit]
-Description=AI-Stu-R1 Student API
+Description=AI-Stu-R1 Student API (SmartBook 1GB)
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/AI-Stu-R1
 EnvironmentFile=/etc/ai-stu-r1/student.env
-ExecStart=/usr/bin/node /opt/AI-Stu-R1/server/stu-api.js
+# Bundled server produced by `pnpm --filter AI-Stu-R1 server:build`.
+ExecStart=/usr/bin/node /opt/AI-Stu-R1/dist-server/stu-api.mjs
 Restart=always
 RestartSec=3
+# 1GB host memory guard rails.
 MemoryHigh=200M
 MemoryMax=256M
 
