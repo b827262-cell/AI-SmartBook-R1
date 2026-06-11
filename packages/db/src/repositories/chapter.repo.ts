@@ -61,6 +61,11 @@ export function makeChapterRepo(db: Db) {
       return rows.map(toChapter);
     },
 
+    /** Remove every chapter for a book. Used to keep regeneration idempotent. */
+    deleteByBookId(bookId: string): void {
+      db.delete(bookChapters).where(eq(bookChapters.bookId, bookId)).run();
+    },
+
     update(id: string, input: UpdateChapterInput): BookChapter | null {
       const patch: Partial<Row> = { updatedAt: nowIso() };
       if (input.title !== undefined) patch.title = input.title;

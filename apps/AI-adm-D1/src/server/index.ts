@@ -8,6 +8,7 @@ import {
   parsePdfToContents,
   splitBookIntoChapters,
   buildChaptersFromContents,
+  buildChaptersFromPdfOutline,
   summarizeChapter,
   askBookQuestion,
   type BookCoreContext
@@ -417,9 +418,18 @@ app.post("/api/admin/books/:bookId/ai/build-chapters", async (req, res) => {
   const book = repos.books.findById(req.params.bookId);
   if (!book) return fail(res, 404, "book not found");
   try {
-    const { job, result } = await runJob(book.id, "build_chapters", req.body, () =>
-      buildChaptersFromContents(ctx, book.id)
-    );
+    const { job, result } = await runJob(book.id, "build_chapters", req.body, async () => {
+      // Idempotent regeneration: clear existing chapters (and their content
+      // links) first so pressing "一鍵生成" twice never stacks duplicates.
+      repos.contents.unlinkChaptersByBookId(book.id);
+      repos.chapters.deleteByBookId(book.id);
+
+      // Prefer the PDF's built-in outline / bookmarks when available.
+      const fromOutline = await buildChaptersFromPdfOutline(ctx, book.id);
+      if (fromOutline.length > 0) return fromOutline;
+      // Fallback: deterministic content-row grouping.
+      return buildChaptersFromContents(ctx, book.id);
+    });
     res.json({ job, chapters: result });
   } catch (err) {
     fail(res, 500, err instanceof Error ? err.message : "build-chapters failed");

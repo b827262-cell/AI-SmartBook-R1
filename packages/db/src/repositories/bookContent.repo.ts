@@ -51,6 +51,14 @@ export function makeBookContentRepo(db: Db) {
         .all();
     },
 
+    /** Detach every content row from its chapter (used before regenerating). */
+    unlinkChaptersByBookId(bookId: string): void {
+      db.update(bookContents)
+        .set({ chapterId: null })
+        .where(eq(bookContents.bookId, bookId))
+        .run();
+    },
+
     linkChapter(contentId: string, chapterId: string | null): void {
       db.update(bookContents)
         .set({ chapterId })
