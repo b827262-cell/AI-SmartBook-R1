@@ -7,6 +7,9 @@ export function OverviewTab({ bookId }: { bookId: string }) {
   const [chapters, setChapters] = useState<BookChapter[]>([]);
   const [files, setFiles] = useState<BookFile[]>([]);
   const [status, setStatus] = useState<string>("");
+  const [category, setCategory] = useState<string>("");
+  const [coverUrl, setCoverUrl] = useState<string>("");
+  const [savedMeta, setSavedMeta] = useState(false);
 
   useEffect(() => {
     adminApi.getBook(bookId).then((d) => {
@@ -14,6 +17,8 @@ export function OverviewTab({ bookId }: { bookId: string }) {
       setChapters(d.chapters);
       setFiles(d.files);
       setStatus(d.book.status);
+      setCategory(d.book.category ?? "");
+      setCoverUrl(d.book.coverUrl ?? "");
     });
   }, [bookId]);
 
@@ -24,6 +29,15 @@ export function OverviewTab({ bookId }: { bookId: string }) {
       status: next as Book["status"]
     });
     setStatus(updated.status);
+  }
+
+  async function saveMeta() {
+    // Blank category/coverUrl are normalized (未分類 / null) server-side.
+    const { book: updated } = await adminApi.updateBook(bookId, { category, coverUrl });
+    setCategory(updated.category ?? "");
+    setCoverUrl(updated.coverUrl ?? "");
+    setSavedMeta(true);
+    setTimeout(() => setSavedMeta(false), 1500);
   }
 
   return (
@@ -44,6 +58,30 @@ export function OverviewTab({ bookId }: { bookId: string }) {
             <option value="archived">archived</option>
           </select>
         </div>
+      </div>
+      <div className="row" style={{ gap: 16, marginTop: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div>
+          <label style={{ display: "block" }}>類科 / 分類</label>
+          <input
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="留空為未分類"
+            style={{ width: 220 }}
+          />
+        </div>
+        <div>
+          <label style={{ display: "block" }}>封面圖片網址</label>
+          <input
+            value={coverUrl}
+            onChange={(e) => setCoverUrl(e.target.value)}
+            placeholder="留空使用預設封面"
+            style={{ width: 320 }}
+          />
+        </div>
+        <button className="btn" type="button" onClick={saveMeta}>
+          儲存分類 / 封面
+        </button>
+        {savedMeta && <span className="muted">已儲存 ✓</span>}
       </div>
     </div>
   );

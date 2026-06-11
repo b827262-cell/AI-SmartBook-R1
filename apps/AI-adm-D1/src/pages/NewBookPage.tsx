@@ -7,6 +7,8 @@ export function NewBookPage() {
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("draft");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -16,7 +18,15 @@ export function NewBookPage() {
     setSaving(true);
     setError("");
     try {
-      const { book } = await adminApi.createBook({ title, subtitle, description, status });
+      const { book } = await adminApi.createBook({
+        title,
+        subtitle,
+        description,
+        // Blank category is normalized to 未分類 server-side.
+        category: category.trim() || "未分類",
+        coverUrl,
+        status
+      });
       navigate(`/admin/books/${book.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -32,6 +42,18 @@ export function NewBookPage() {
         <input value={title} onChange={(e) => setTitle(e.target.value)} required />
         <label>副標題</label>
         <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} />
+        <label>類科 / 分類</label>
+        <input
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="例如：中級會計學（留空為未分類）"
+        />
+        <label>封面圖片網址（可留空）</label>
+        <input
+          value={coverUrl}
+          onChange={(e) => setCoverUrl(e.target.value)}
+          placeholder="https://…（留空使用預設封面）"
+        />
         <label>描述</label>
         <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
         <label>狀態</label>
