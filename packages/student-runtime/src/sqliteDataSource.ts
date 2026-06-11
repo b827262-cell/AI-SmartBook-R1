@@ -10,6 +10,7 @@ interface BookRow {
   subtitle: string | null;
   description: string | null;
   cover_url: string | null;
+  category: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -46,6 +47,7 @@ function toBook(r: BookRow): Book {
     subtitle: r.subtitle,
     description: r.description,
     coverUrl: r.cover_url,
+    category: r.category ?? "未分類",
     status: r.status as Book["status"],
     createdAt: r.created_at,
     updatedAt: r.updated_at

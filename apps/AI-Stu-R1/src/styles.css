@@ -68,4 +68,63 @@ a { color: var(--primary); text-decoration: none; }
 .chat-input { display: flex; gap: 10px; padding: 14px 8px; border-top: 1px solid var(--border); background: var(--bg); }
 .chat-input input { flex: 1; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font: inherit; }
 .muted { color: var(--muted); }
-.back-link { font-size: 14px; }
+.back-link { font-size: 14px; background: none; border: none; color: var(--primary); cursor: pointer; padding: 0; }
+
+/* ---- Category library ---------------------------------------------------- */
+.category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+.category-card {
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
+  padding: 22px; cursor: pointer; text-align: left;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06); transition: transform .15s ease;
+}
+.category-card:hover { transform: translateY(-3px); }
+.category-card .cat-name { font-size: 18px; font-weight: 600; }
+.category-card .cat-count {
+  font-size: 13px; color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  padding: 3px 12px; border-radius: 999px;
+}
+
+/* ---- Book cover (with fallback) ------------------------------------------ */
+.book-cover { position: relative; overflow: hidden; background: #e2e8f0; }
+.book-cover.card { height: 150px; }
+.book-cover.hero { width: 100%; aspect-ratio: 3 / 4; border-radius: 14px; }
+.book-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.book-cover.fallback {
+  display: flex; flex-direction: column; justify-content: center; gap: 8px;
+  padding: 18px; color: #fff;
+  background: linear-gradient(150deg, var(--primary), var(--primary-2));
+}
+.book-cover.fallback .fc-category { font-size: 12px; opacity: .85; letter-spacing: .04em; }
+.book-cover.fallback .fc-title { font-size: 18px; font-weight: 700; line-height: 1.4; }
+.book-cover.fallback .fc-author { font-size: 12px; opacity: .8; margin-top: auto; }
+
+/* ---- Reader (3-column) --------------------------------------------------- */
+.reader-grid { display: grid; grid-template-columns: 260px 1fr 360px; gap: 22px; align-items: start; }
+.reader-meta, .reader-body, .reader-chat { background: var(--panel); border-radius: 16px; padding: 20px; }
+.reader-meta h2 { margin: 14px 0 4px; font-size: 20px; }
+.reader-meta .cat-tag {
+  display: inline-block; font-size: 12px; background: #eef2ff; color: var(--primary);
+  padding: 3px 10px; border-radius: 999px; margin: 6px 0;
+}
+.reader-meta .desc { font-size: 14px; color: var(--muted); line-height: 1.7; }
+.reader-body h4, .reader-chat h4 { margin: 0 0 12px; }
+.chapter-list { list-style: none; padding: 0; margin: 0; }
+.chapter-list button {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer; font: inherit; color: var(--text);
+}
+.chapter-list button:hover { background: #f1f5f9; }
+.chapter-list button.active { background: #eef2ff; color: var(--primary); font-weight: 600; }
+.chapter-list .ch-order { color: var(--muted); margin-right: 4px; }
+.chapter-list .ch-summary { font-size: 13px; color: var(--muted); padding: 4px 10px 8px; margin: 0; line-height: 1.7; }
+.reader-body .para { line-height: 1.9; margin-bottom: 16px; }
+.reader-body .para .pageno { color: var(--muted); font-size: 12px; margin-right: 8px; }
+.reader-chat .chat-wrap { height: 520px; max-width: none; margin: 0; }
+.reader-chat .chat-scroll { padding: 8px 4px; }
+.reader-chat .chat-input { padding: 12px 4px 4px; }
+
+@media (max-width: 920px) {
+  .reader-grid { grid-template-columns: 1fr; }
+  .reader-chat .chat-wrap { height: 420px; }
+}

@@ -1,7 +1,12 @@
-import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { BooksPage } from "./pages/BooksPage";
-import { ReadPage } from "./pages/ReadPage";
-import { ChatPage } from "./pages/ChatPage";
+import { BookReaderPage } from "./pages/BookReaderPage";
+
+/** Legacy /read and /chat routes now resolve to the unified reader. */
+function RedirectToReader() {
+  const { bookId = "" } = useParams();
+  return <Navigate to={`/books/${bookId}`} replace />;
+}
 
 function Header() {
   return (
@@ -22,8 +27,9 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/books" replace />} />
           <Route path="/books" element={<BooksPage />} />
-          <Route path="/books/:bookId/read" element={<ReadPage />} />
-          <Route path="/books/:bookId/chat" element={<ChatPage />} />
+          <Route path="/books/:bookId" element={<BookReaderPage />} />
+          <Route path="/books/:bookId/read" element={<RedirectToReader />} />
+          <Route path="/books/:bookId/chat" element={<RedirectToReader />} />
           <Route path="*" element={<Navigate to="/books" replace />} />
         </Routes>
       </main>
