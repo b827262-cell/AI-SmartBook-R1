@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api/student": {
-        target: "http://127.0.0.1:4310",
+        target: process.env.STUDENT_API_TARGET || process.env.ADMIN_API_TARGET || "http://127.0.0.1:4300",
         changeOrigin: true
       }
     }
