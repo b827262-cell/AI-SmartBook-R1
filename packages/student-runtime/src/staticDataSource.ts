@@ -9,6 +9,7 @@ const DEMO_BOOK: Book = {
   subtitle: "AI SmartBook Demo",
   description: "靜態模式內建的範例書本，用於前台 UX 驗證。",
   coverUrl: null,
+  category: "未分類",
   status: "published",
   createdAt: now,
   updatedAt: now

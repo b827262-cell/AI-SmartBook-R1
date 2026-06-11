@@ -1,23 +1,16 @@
 import { Link } from "react-router-dom";
 import type { Book } from "@ai-smartbook/schema";
+import { BookCover } from "./BookCover";
 
-/** Ported book-card look from the legacy SmartBook Lite library view. */
+/** Book card: cover (with fallback) + title, links into the reader. */
 export function BookCard({ book }: { book: Book }) {
   return (
-    <article className="book-card">
-      <div className="cover" />
+    <Link className="book-card" to={`/books/${book.id}`}>
+      <BookCover book={book} />
       <div className="body">
         <h3>{book.title}</h3>
-        <p>{book.description || book.subtitle || "智能書本"}</p>
-        <div className="actions">
-          <Link className="btn" to={`/books/${book.id}/read`}>
-            開始閱讀
-          </Link>
-          <Link className="btn ghost" to={`/books/${book.id}/chat`}>
-            問書本
-          </Link>
-        </div>
+        <p>{book.subtitle || book.description || "智能書本"}</p>
       </div>
-    </article>
+    </Link>
   );
 }

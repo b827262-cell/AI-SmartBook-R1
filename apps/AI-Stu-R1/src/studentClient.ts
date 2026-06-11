@@ -1,7 +1,14 @@
-import type { Book, BookChapter, BookContent } from "@ai-smartbook/schema";
+import type { Book, BookChapter, BookContent, ChatMessage } from "@ai-smartbook/schema";
 
-interface BookDetail extends Book {
+export interface BookDetail extends Book {
   chapters: BookChapter[];
+}
+
+export interface ChatResponse {
+  sessionId: string;
+  answer: string;
+  chatMode: string;
+  messages: ChatMessage[];
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -17,21 +24,25 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * Student-facing API client. It only talks to /api/student/* — it never
- * stores an API key and never calls an AI SDK directly.
+ * Student-facing API client. It only talks to /api/student/* — it never stores
+ * an API key and never calls an AI SDK directly.
  */
 export const studentClient = {
   listBooks: () => http<{ mode: string; books: Book[] }>("/api/student/books"),
 
-  getBook: (bookId: string) =>
-    http<{ book: BookDetail }>(`/api/student/books/${bookId}`),
+  getBook: (bookId: string) => http<{ book: BookDetail }>(`/api/student/books/${bookId}`),
 
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/student/books/${bookId}/contents`),
 
-  chat: (bookId: string, question: string) =>
-    http<{ answer: string; matchedContentIds: string[]; chatMode: string }>(
-      `/api/student/books/${bookId}/chat`,
-      { method: "POST", body: JSON.stringify({ question }) }
+  sendBookChat: (bookId: string, body: { message: string; sessionId?: string }) =>
+    http<ChatResponse>(`/api/student/books/${bookId}/chat`, {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+
+  getBookChatSession: (bookId: string, sessionId: string) =>
+    http<{ sessionId: string; messages: ChatMessage[] }>(
+      `/api/student/books/${bookId}/chat-sessions/${sessionId}`
     )
 };
