@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
-import { getDb, createRepositories } from "@ai-smartbook/db";
+import { getDb, createRepositories, runMigrations, resolveDbPath } from "@ai-smartbook/db";
 import { createAiProvider } from "@ai-smartbook/ai";
 import {
   parsePdfToContents,
@@ -22,7 +22,11 @@ import {
   type BookAiJob
 } from "@ai-smartbook/schema";
 
-const { db } = getDb();
+const { db, sqlite } = getDb();
+// Ensure the admin schema exists on the resolved DB path. This is idempotent
+// and keeps `pnpm --filter AI-adm-D1 server:dev` working even before a manual
+// `db:migrate` (it just yields an empty book list until you seed).
+runMigrations(sqlite);
 const repos = createRepositories(db);
 const ai = createAiProvider();
 const ctx: BookCoreContext = { repos, ai };
@@ -236,5 +240,7 @@ app.get("/api/admin/books/:bookId/qa-logs", (req, res) => {
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);
 app.listen(port, () => {
-  console.log(`AI-adm-D1 admin API listening on ${port} (ai provider: ${ai.name})`);
+  console.log(
+    `AI-adm-D1 admin API listening on ${port} (ai provider: ${ai.name}, db: ${resolveDbPath()})`
+  );
 });
