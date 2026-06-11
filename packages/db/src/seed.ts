@@ -11,6 +11,41 @@ export function runSeed(dbPath = resolveDbPath()): void {
   runMigrations(sqlite);
   const repos = createRepositories(db);
 
+  // Library demo fixture: enough published books to exercise the category
+  // grouping UX (中級會計學 => 5 本, 刑法 => 3 本). Idempotent by title so the
+  // seed is safe to re-run. coverUrl is intentionally null for some books to
+  // exercise the front-end fallback cover.
+  const libraryFixture: Array<{ title: string; category: string; coverUrl: string | null }> = [
+    ...Array.from({ length: 5 }, (_, i) => ({
+      title: `中級會計學（第 ${i + 1} 冊）`,
+      category: "中級會計學",
+      coverUrl: i % 2 === 0 ? `https://picsum.photos/seed/acct-${i + 1}/240/320` : null
+    })),
+    ...Array.from({ length: 3 }, (_, i) => ({
+      title: `刑法（第 ${i + 1} 冊）`,
+      category: "刑法",
+      coverUrl: i === 0 ? `https://picsum.photos/seed/crim-${i + 1}/240/320` : null
+    }))
+  ];
+
+  const existingTitles = new Set(repos.books.findAll().map((b) => b.title));
+  let createdFixture = 0;
+  for (const item of libraryFixture) {
+    if (existingTitles.has(item.title)) continue;
+    repos.books.create({
+      title: item.title,
+      subtitle: item.category,
+      description: `${item.category} 範例教材，用於前台類科統計與封面 fallback 測試。`,
+      category: item.category,
+      coverUrl: item.coverUrl,
+      status: "published"
+    });
+    createdFixture += 1;
+  }
+  if (createdFixture > 0) {
+    console.log(`[db] seed: created ${createdFixture} library fixture books`);
+  }
+
   const existing = repos.books.findAll();
   if (existing.some((b) => b.title === "智能書本範例：學習導論")) {
     console.log("[db] seed skipped: demo book already exists");

@@ -15,6 +15,18 @@ function toBook(row: Row): Book {
   return { ...row, status: row.status as BookStatus };
 }
 
+/** Blank/whitespace category falls back to the default bucket. */
+function normalizeCategory(value: string | null | undefined): string {
+  const trimmed = (value ?? "").trim();
+  return trimmed === "" ? "未分類" : trimmed;
+}
+
+/** Blank cover URL is stored as null so the UI shows its fallback cover. */
+function normalizeCoverUrl(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 export function makeBookRepo(db: Db) {
   return {
     findAll(): Book[] {
@@ -37,7 +49,8 @@ export function makeBookRepo(db: Db) {
         title: input.title,
         subtitle: input.subtitle ?? null,
         description: input.description ?? null,
-        coverUrl: input.coverUrl ?? null,
+        coverUrl: normalizeCoverUrl(input.coverUrl),
+        category: normalizeCategory(input.category),
         status: input.status ?? "draft",
         createdAt: ts,
         updatedAt: ts
@@ -51,7 +64,8 @@ export function makeBookRepo(db: Db) {
       if (input.title !== undefined) patch.title = input.title;
       if (input.subtitle !== undefined) patch.subtitle = input.subtitle ?? null;
       if (input.description !== undefined) patch.description = input.description ?? null;
-      if (input.coverUrl !== undefined) patch.coverUrl = input.coverUrl ?? null;
+      if (input.coverUrl !== undefined) patch.coverUrl = normalizeCoverUrl(input.coverUrl);
+      if (input.category !== undefined) patch.category = normalizeCategory(input.category);
       if (input.status !== undefined) patch.status = input.status;
       db.update(books).set(patch).where(eq(books.id, id)).run();
       const row = db.select().from(books).where(eq(books.id, id)).get();
