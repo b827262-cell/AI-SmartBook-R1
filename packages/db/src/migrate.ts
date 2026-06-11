@@ -1,0 +1,118 @@
+import type Database from "better-sqlite3";
+import { createDbHandle, resolveDbPath } from "./client";
+
+const STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS books (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    subtitle TEXT,
+    description TEXT,
+    cover_url TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS book_files (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL DEFAULT 0,
+    parse_status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS book_contents (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    file_id TEXT,
+    chapter_id TEXT,
+    page_number INTEGER,
+    content_text TEXT NOT NULL,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS book_chapters (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT,
+    order_index INTEGER NOT NULL DEFAULT 0,
+    page_start INTEGER,
+    page_end INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    user_id TEXT,
+    title TEXT NOT NULL DEFAULT 'New chat',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS chat_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS book_ai_jobs (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    input_json TEXT,
+    output_json TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS book_qa_logs (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    chapter_id TEXT,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    context_json TEXT,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_book_files_book ON book_files(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_book_contents_book ON book_contents(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_book_contents_chapter ON book_contents(chapter_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_book_chapters_book ON book_chapters(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_book_ai_jobs_book ON book_ai_jobs(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_book_qa_logs_book ON book_qa_logs(book_id)`
+];
+
+/** Idempotently create all tables on the given SQLite connection. */
+export function runMigrations(sqlite: Database.Database): void {
+  const tx = sqlite.transaction(() => {
+    for (const stmt of STATEMENTS) {
+      sqlite.exec(stmt);
+    }
+  });
+  tx();
+}
+
+async function main() {
+  const dbPath = resolveDbPath();
+  const { sqlite } = createDbHandle(dbPath);
+  runMigrations(sqlite);
+  sqlite.close();
+  console.log(`[db] migration complete: ${dbPath}`);
+}
+
+// Run when executed directly via `tsx src/migrate.ts`.
+const invokedDirectly = process.argv[1]?.includes("migrate");
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

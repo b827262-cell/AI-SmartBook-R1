@@ -8,9 +8,16 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "lint": "echo \"lint placeholder\""
+    "lint": "echo \"lint placeholder\"",
+    "sync:export": "tsx src/cli.ts"
   },
   "devDependencies": {
+    "@types/node": "latest",
+    "tsx": "latest",
     "typescript": "latest"
+  },
+  "dependencies": {
+    "@ai-smartbook/schema": "workspace:*",
+    "@ai-smartbook/db": "workspace:*"
   }
 }

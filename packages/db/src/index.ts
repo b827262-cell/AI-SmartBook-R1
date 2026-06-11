@@ -1,8 +1,5 @@
-export const dbPackageReady = true;
-
-// TODO Phase 0.5 implementation:
-// - client.ts
-// - schema.ts
-// - migrate.ts
-// - seed.ts
-// - repositories/*
+export * from "./schema";
+export * from "./client";
+export { runMigrations } from "./migrate";
+export { runSeed } from "./seed";
+export * from "./repositories";

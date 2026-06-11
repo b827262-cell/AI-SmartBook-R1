@@ -1,0 +1,38 @@
+import { desc, eq } from "drizzle-orm";
+import type { BookQaLog, CreateQaLogInput } from "@ai-smartbook/schema";
+import type { Db } from "../client";
+import { bookQaLogs } from "../schema";
+import { newId, nowIso } from "./util";
+
+type Row = typeof bookQaLogs.$inferSelect;
+
+export function makeQaLogRepo(db: Db) {
+  return {
+    create(input: CreateQaLogInput): BookQaLog {
+      const row: Row = {
+        id: newId("qa"),
+        bookId: input.bookId,
+        chapterId: input.chapterId ?? null,
+        question: input.question,
+        answer: input.answer,
+        contextJson: input.contextJson ?? null,
+        provider: input.provider,
+        model: input.model,
+        createdAt: nowIso()
+      };
+      db.insert(bookQaLogs).values(row).run();
+      return row;
+    },
+
+    findByBookId(bookId: string): BookQaLog[] {
+      return db
+        .select()
+        .from(bookQaLogs)
+        .where(eq(bookQaLogs.bookId, bookId))
+        .orderBy(desc(bookQaLogs.createdAt))
+        .all();
+    }
+  };
+}
+
+export type QaLogRepo = ReturnType<typeof makeQaLogRepo>;

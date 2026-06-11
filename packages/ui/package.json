@@ -10,7 +10,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "echo \"lint placeholder\""
   },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
   "devDependencies": {
-    "typescript": "latest"
+    "typescript": "latest",
+    "react": "^19.0.0",
+    "@types/react": "^19.0.0"
   }
 }
