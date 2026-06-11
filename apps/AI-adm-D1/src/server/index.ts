@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
@@ -34,6 +34,32 @@ const ctx: BookCoreContext = { repos, ai };
 
 const UPLOAD_ROOT = resolve(process.env.UPLOAD_DIR || "./uploads/books");
 
+function decodeUploadFileName(name: string): string {
+  try {
+    const decoded = Buffer.from(name, "latin1").toString("utf8");
+
+    if (decoded.includes("\uFFFD")) return name;
+    if (/[一-鿿ぁ-ゟ゠-ヿ]/u.test(decoded)) return decoded;
+    if (!/[^\x00-\x7F]/.test(name) && /[^\x00-\x7F]/.test(decoded)) return decoded;
+
+    return name;
+  } catch {
+    return name;
+  }
+}
+
+function sanitizeUploadFileName(name: string): string {
+  const normalized = decodeUploadFileName(name).normalize("NFC");
+  const safe = normalized
+    .replace(/[\/\\]/g, "_")
+    .replace(/[\u0000-\u001f\u007f]+/g, "")
+    .replace(/[^\p{L}\p{N}\p{M}\p{Pc}\p{Pd}.\s()（）[\]【】]+/gu, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return safe || "upload.pdf";
+}
+
 const storage = multer.diskStorage({
   destination(req, _file, cb) {
     const dir = resolve(UPLOAD_ROOT, String(req.params.bookId));
@@ -41,7 +67,7 @@ const storage = multer.diskStorage({
     cb(null, dir);
   },
   filename(_req, file, cb) {
-    const safe = file.originalname.replace(/[^\w.\-]+/g, "_");
+    const safe = sanitizeUploadFileName(file.originalname);
     cb(null, `${Date.now()}_${safe}`);
   }
 });
@@ -65,6 +91,52 @@ function tokenizeQuestion(question: string): string[] {
     grams.add(cleaned.slice(i, i + 2));
   }
   return [...grams];
+}
+
+function normalizeManualQuestion(question: string): string {
+  return question
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[，。．,.!?？！、:：;；()（）「」『』\[\]【】"'`]/g, "");
+}
+
+function similarityScore(input: string, candidate: string): number {
+  const normalizedInput = normalizeManualQuestion(input);
+  const normalizedCandidate = normalizeManualQuestion(candidate);
+  if (!normalizedInput || !normalizedCandidate) return 0;
+  if (normalizedInput === normalizedCandidate) return 1;
+  if (
+    normalizedInput.includes(normalizedCandidate) ||
+    normalizedCandidate.includes(normalizedInput)
+  ) {
+    return 0.92;
+  }
+
+  const inputTokens = new Set(tokenizeQuestion(input));
+  const candidateTokens = new Set(tokenizeQuestion(candidate));
+  if (inputTokens.size === 0 || candidateTokens.size === 0) return 0;
+
+  let overlap = 0;
+  for (const token of inputTokens) {
+    if (candidateTokens.has(token)) overlap += 1;
+  }
+
+  return overlap / Math.max(inputTokens.size, candidateTokens.size);
+}
+
+function findManualQaAnswer(bookId: string, question: string) {
+  const manualLogs = repos.qaLogs.findManualByBookId(bookId);
+  let best: { question: string; answer: string; score: number } | null = null;
+
+  for (const log of manualLogs) {
+    const score = similarityScore(question, log.question);
+    if (!best || score > best.score) {
+      best = { question: log.question, answer: log.answer, score };
+    }
+  }
+
+  return best && best.score >= 0.72 ? best : null;
 }
 
 function keywordChat(question: string, bookId: string) {
@@ -108,6 +180,71 @@ function findPublishedBook(bookId: string) {
   const book = repos.books.findById(bookId);
   if (!book || book.status !== "published") return null;
   return book;
+}
+
+interface ManualQaItem {
+  question: string;
+  answer: string;
+}
+
+function normalizeQaLabel(line: string): string {
+  return line
+    .replace(/^[#*\-\s>]+/, "")
+    .replace(/\*\*/g, "")
+    .trim();
+}
+
+function parseManualQaMarkdown(markdown: string): ManualQaItem[] {
+  const lines = markdown.split(/\r?\n/);
+  const items: ManualQaItem[] = [];
+  let currentQuestion = "";
+  let answerLines: string[] = [];
+  let mode: "idle" | "question" | "answer" = "idle";
+
+  function flush() {
+    const question = currentQuestion.trim();
+    const answer = answerLines.join("\n").trim();
+    if (question && answer) {
+      items.push({ question, answer });
+    }
+    currentQuestion = "";
+    answerLines = [];
+    mode = "idle";
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const normalized = normalizeQaLabel(rawLine);
+
+    if (/^(Q|Q\d+|Question|問題|問)[:：]\s*/i.test(normalized)) {
+      flush();
+      currentQuestion = normalized.replace(/^(Q|Q\d+|Question|問題|問)[:：]\s*/i, "").trim();
+      mode = "question";
+      continue;
+    }
+
+    if (/^(A|Answer|答案|答)[:：]\s*/i.test(normalized)) {
+      answerLines = [normalized.replace(/^(A|Answer|答案|答)[:：]\s*/i, "").trim()];
+      mode = "answer";
+      continue;
+    }
+
+    if (mode === "question" && normalized !== "") {
+      currentQuestion = [currentQuestion, normalized].filter(Boolean).join(" ").trim();
+      continue;
+    }
+
+    if (mode === "answer") {
+      if (line === "") {
+        answerLines.push("");
+      } else {
+        answerLines.push(rawLine.trim());
+      }
+    }
+  }
+
+  flush();
+  return items;
 }
 
 /** Wrap an AI operation as a tracked book_ai_job row. */
@@ -172,16 +309,39 @@ app.post("/api/admin/books/:bookId/files", upload.single("file"), (req, res) => 
   if (!book) return fail(res, 404, "book not found");
   const file = (req as Request & { file?: Express.Multer.File }).file;
   if (!file) return fail(res, 400, "file is required (multipart field 'file')");
+  const rawDisplayName =
+    typeof req.body?.displayName === "string" && req.body.displayName.trim() !== ""
+      ? req.body.displayName
+      : file.originalname;
+  const displayName = sanitizeUploadFileName(rawDisplayName);
 
   const record = repos.files.create({
     bookId: book.id,
-    fileName: file.originalname,
+    fileName: displayName,
     filePath: file.path,
     fileType: file.mimetype || "application/octet-stream",
     fileSize: file.size,
     parseStatus: "pending"
   });
   res.status(201).json({ file: record });
+});
+
+app.delete("/api/admin/books/:bookId/files/:fileId", (req, res) => {
+  const file = repos.files.findById(req.params.fileId);
+  if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
+
+  if (existsSync(file.filePath)) {
+    try {
+      unlinkSync(file.filePath);
+    } catch (err) {
+      return fail(res, 500, err instanceof Error ? err.message : "delete file failed");
+    }
+  }
+
+  repos.contents.deleteByFileId(file.id);
+  repos.files.delete(file.id);
+
+  res.json({ deleted: true });
 });
 
 app.post("/api/admin/books/:bookId/files/:fileId/parse", async (req, res) => {
@@ -205,6 +365,16 @@ app.post("/api/admin/books/:bookId/files/:fileId/parse", async (req, res) => {
 
 app.get("/api/admin/books/:bookId/contents", (req, res) => {
   res.json({ contents: repos.contents.findByBookId(req.params.bookId) });
+});
+
+app.delete("/api/admin/books/:bookId/contents", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  repos.contents.deleteByBookId(book.id);
+  repos.files.resetParseStatusByBookId(book.id, "pending");
+
+  res.json({ cleared: true });
 });
 
 // ---- Chapters -------------------------------------------------------------
@@ -287,6 +457,36 @@ app.post("/api/admin/books/:bookId/qa", async (req, res) => {
   }
 });
 
+app.post("/api/admin/books/:bookId/qa/import-markdown", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const markdown = typeof req.body?.markdown === "string" ? req.body.markdown : "";
+  if (!markdown.trim()) return fail(res, 400, "markdown is required");
+
+  const items = parseManualQaMarkdown(markdown);
+  if (items.length === 0) {
+    return fail(
+      res,
+      400,
+      "no Q/A pairs found; use lines like 'Q: ...' and 'A: ...' in the markdown file"
+    );
+  }
+
+  const created = repos.qaLogs.createMany(
+    items.map((item) => ({
+      bookId: book.id,
+      question: item.question,
+      answer: item.answer,
+      contextJson: null,
+      provider: "manual",
+      model: "markdown"
+    }))
+  );
+
+  res.status(201).json({ imported: created.length, logs: created });
+});
+
 app.get("/api/admin/books/:bookId/ai-jobs", (req, res) => {
   res.json({ jobs: repos.aiJobs.findByBookId(req.params.bookId) });
 });
@@ -332,14 +532,29 @@ app.post("/api/student/books/:bookId/chat", (req, res) => {
     sessionId = repos.chat.createSession({ bookId: book.id, title: question.slice(0, 40) }).id;
   }
 
-  const { answer } = keywordChat(question, book.id);
+  const manualAnswer = findManualQaAnswer(book.id, question);
+  const result = manualAnswer
+    ? {
+        answer: `以下為老師整理的 Q&A：\n${manualAnswer.answer}`,
+        chatMode: "manual-qa",
+        source: "manual_qa",
+        provider: "manual",
+        model: "markdown",
+        matchedQuestion: manualAnswer.question
+      }
+    : {
+        ...keywordChat(question, book.id),
+        chatMode: "keyword",
+        source: "book_contents",
+        provider: "keyword",
+        model: "local"
+      };
   repos.chat.addMessage({ sessionId, role: "user", content: question });
-  repos.chat.addMessage({ sessionId, role: "assistant", content: answer });
+  repos.chat.addMessage({ sessionId, role: "assistant", content: result.answer });
 
   res.json({
     sessionId,
-    answer,
-    chatMode: "keyword",
+    ...result,
     messages: repos.chat.findMessages(sessionId)
   });
 });

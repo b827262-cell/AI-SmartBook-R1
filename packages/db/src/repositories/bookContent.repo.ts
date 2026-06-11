@@ -34,6 +34,14 @@ export function makeBookContentRepo(db: Db) {
         .all();
     },
 
+    deleteByFileId(fileId: string): void {
+      db.delete(bookContents).where(eq(bookContents.fileId, fileId)).run();
+    },
+
+    deleteByBookId(bookId: string): void {
+      db.delete(bookContents).where(eq(bookContents.bookId, bookId)).run();
+    },
+
     findByChapterId(chapterId: string): BookContent[] {
       return db
         .select()

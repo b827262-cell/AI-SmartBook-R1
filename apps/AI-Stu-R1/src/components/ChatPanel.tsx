@@ -17,7 +17,19 @@ function sessionKey(bookId: string): string {
  * restores history from the server on mount so a page refresh keeps the
  * conversation. Talks only to /api/student/* via studentClient.
  */
-export function ChatPanel({ bookId }: { bookId: string }) {
+export function ChatPanel({
+  bookId,
+  title,
+  subtitle,
+  quickPrompts = [],
+  inputPlaceholder
+}: {
+  bookId: string;
+  title?: string;
+  subtitle?: string;
+  quickPrompts?: string[];
+  inputPlaceholder?: string;
+}) {
   const [messages, setMessages] = useState<ChatMessageItem[]>([GREETING]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,6 +83,12 @@ export function ChatPanel({ bookId }: { bookId: string }) {
 
   return (
     <div className="chat-wrap">
+      {(title || subtitle) && (
+        <div className="chat-head">
+          {title && <h4>{title}</h4>}
+          {subtitle && <p className="chat-sub">{subtitle}</p>}
+        </div>
+      )}
       <div className="chat-scroll" ref={scrollRef}>
         {messages.map((m, i) => (
           <MessageBubble key={i} message={m} />
@@ -78,7 +96,16 @@ export function ChatPanel({ bookId }: { bookId: string }) {
         {busy && <div className="bubble assistant muted">思考中…</div>}
         {error && <div className="bubble assistant" style={{ color: "#b91c1c" }}>發生錯誤：{error}</div>}
       </div>
-      <ChatInput disabled={busy} onSend={send} />
+      {quickPrompts.length > 0 && (
+        <div className="chat-quick">
+          {quickPrompts.map((q) => (
+            <button key={q} type="button" disabled={busy} onClick={() => send(q)}>
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+      <ChatInput disabled={busy} onSend={send} placeholder={inputPlaceholder} />
     </div>
   );
 }

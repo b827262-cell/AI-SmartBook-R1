@@ -46,11 +46,17 @@ export const adminApi = {
   uploadFile: (bookId: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
+    form.append("displayName", file.name);
     return http<{ file: BookFile }>(`/api/admin/books/${bookId}/files`, {
       method: "POST",
       body: form
     });
   },
+
+  deleteFile: (bookId: string, fileId: string) =>
+    http<{ deleted: boolean }>(`/api/admin/books/${bookId}/files/${fileId}`, {
+      method: "DELETE"
+    }),
 
   parseFile: (bookId: string, fileId: string) =>
     http<{ parsed: number; pageCount: number }>(
@@ -61,11 +67,16 @@ export const adminApi = {
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/admin/books/${bookId}/contents`),
 
+  clearContents: (bookId: string) =>
+    http<{ cleared: boolean }>(`/api/admin/books/${bookId}/contents`, {
+      method: "DELETE"
+    }),
+
   getChapters: (bookId: string) =>
     http<{ chapters: BookChapter[] }>(`/api/admin/books/${bookId}/chapters`),
 
-  splitBook: (bookId: string) =>
-    http<{ chapters: BookChapter[] }>(`/api/admin/books/${bookId}/ai/split-book`, {
+  generateChapters: (bookId: string) =>
+    http<{ chapters: BookChapter[] }>(`/api/admin/books/${bookId}/ai/build-chapters`, {
       method: "POST",
       body: JSON.stringify({})
     }),
@@ -81,6 +92,15 @@ export const adminApi = {
       `/api/admin/books/${bookId}/qa`,
       { method: "POST", body: JSON.stringify({ question }) }
     ),
+
+  importQaMarkdown: (bookId: string, markdown: string) =>
+    http<{ imported: number; logs: BookQaLog[] }>(
+      `/api/admin/books/${bookId}/qa/import-markdown`,
+      { method: "POST", body: JSON.stringify({ markdown }) }
+    ),
+
+  getQaLogs: (bookId: string) =>
+    http<{ logs: BookQaLog[] }>(`/api/admin/books/${bookId}/qa-logs`),
 
   getJobs: (bookId: string) =>
     http<{ jobs: BookAiJob[] }>(`/api/admin/books/${bookId}/ai-jobs`)

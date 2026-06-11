@@ -12,11 +12,11 @@ export function ChaptersTab({ bookId }: { bookId: string }) {
   }
   useEffect(reload, [bookId]);
 
-  async function onSplit() {
+  async function onGenerate() {
     setBusy(true);
     setError("");
     try {
-      await adminApi.splitBook(bookId);
+      await adminApi.generateChapters(bookId);
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -44,11 +44,11 @@ export function ChaptersTab({ bookId }: { bookId: string }) {
         <div>
           <h3 style={{ margin: 0 }}>章節（{chapters.length}）</h3>
           <p className="muted" style={{ margin: "4px 0 0" }}>
-            使用 AI 從內容拆出章節草稿。
+            依 PDF 解析內容直接生成章節草稿。
           </p>
         </div>
-        <button className="btn" onClick={onSplit} disabled={busy}>
-          {busy ? "處理中…" : "AI 拆書"}
+        <button className="btn" onClick={onGenerate} disabled={busy}>
+          {busy ? "處理中…" : "一鍵生成"}
         </button>
       </div>
       {error && <p className="error">{error}</p>}

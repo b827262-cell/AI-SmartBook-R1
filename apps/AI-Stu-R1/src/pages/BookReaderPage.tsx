@@ -1,22 +1,40 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import type { BookChapter, BookContent } from "@ai-smartbook/schema";
 import { studentClient, type BookDetail } from "../studentClient";
-import { BookCover } from "../components/BookCover";
+import type { StudentBook } from "../bookDisplay";
+import { ReaderTopBar } from "../components/ReaderTopBar";
+import { ReaderTabs, READER_TABS, type ReaderTabKey } from "../components/ReaderTabs";
+import { ChapterSidebar } from "../components/ChapterSidebar";
+import { ReaderViewport, type ReaderRatio } from "../components/ReaderViewport";
 import { ChatPanel } from "../components/ChatPanel";
+import { TabPlaceholder } from "../components/TabPlaceholder";
+
+const QUICK_PROMPTS = [
+  "整理這頁重點",
+  "用例子解釋",
+  "本章有考題？",
+  "解析第一題",
+  "關鍵字找考題"
+];
 
 export function BookReaderPage() {
   const { bookId = "" } = useParams();
   const [book, setBook] = useState<BookDetail | null>(null);
   const [contents, setContents] = useState<BookContent[]>([]);
   const [activeChapter, setActiveChapter] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ReaderTabKey>("smart-book");
+  const [collapsed, setCollapsed] = useState(false);
+  const [ratio, setRatio] = useState<ReaderRatio>("7:3");
+  const [zoom] = useState(100);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const chatRef = useRef<HTMLDivElement>(null);
 
-  // Reset chapter selection when switching books so a stale A-book chapter id
-  // never filters B-book contents.
+  // Reset per-book view state when switching books.
   useEffect(() => {
     setActiveChapter(null);
+    setActiveTab("smart-book");
   }, [bookId]);
 
   useEffect(() => {
@@ -36,86 +54,65 @@ export function BookReaderPage() {
     [book, activeChapter]
   );
 
-  // Contents shown for the selected chapter (or all when none selected).
   const shownContents = useMemo(
     () => (safeActiveChapter ? contents.filter((c) => c.chapterId === safeActiveChapter) : contents),
     [contents, safeActiveChapter]
   );
 
-  if (loading) return <p className="muted">載入中…</p>;
-  if (error) return <p style={{ color: "#b91c1c" }}>{error}</p>;
-  if (!book) return <p className="muted">找不到這本書。</p>;
+  if (loading) return <p className="muted reader-state">載入中…</p>;
+  if (error) return <p className="error-text reader-state">{error}</p>;
+  if (!book) return <p className="muted reader-state">找不到這本書。</p>;
 
   const chapters: BookChapter[] = book.chapters ?? [];
+  const ratioClass = `ratio-${ratio.replace(":", "-")}`;
+
+  function scrollToChat() {
+    chatRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 
   return (
-    <div>
-      <div className="row" style={{ marginBottom: 16 }}>
-        <Link className="back-link" to="/books">
-          ← 返回書庫
-        </Link>
-      </div>
+    <div className="reader-workbench">
+      <ReaderTopBar book={book as StudentBook} onToggleHistory={scrollToChat} />
+      <ReaderTabs active={activeTab} onChange={setActiveTab} />
 
-      <div className="reader-grid">
-        {/* Left: book meta */}
-        <aside className="reader-meta">
-          <BookCover book={book} size="hero" />
-          <h2>{book.title}</h2>
-          {book.subtitle && <p className="muted">{book.subtitle}</p>}
-          <p className="cat-tag">{book.category || "未分類"}</p>
-          {book.description && <p className="desc">{book.description}</p>}
-        </aside>
-
-        {/* Center: chapters + contents */}
-        <section className="reader-body">
-          <h4>章節目錄</h4>
-          {chapters.length === 0 ? (
-            <p className="muted">尚未建立章節目錄</p>
-          ) : (
-            <ul className="chapter-list">
-              <li>
-                <button
-                  className={safeActiveChapter === null ? "active" : ""}
-                  onClick={() => setActiveChapter(null)}
-                >
-                  全部內容
-                </button>
-              </li>
-              {chapters.map((ch) => (
-                <li key={ch.id}>
-                  <button
-                    className={safeActiveChapter === ch.id ? "active" : ""}
-                    onClick={() => setActiveChapter(ch.id)}
-                  >
-                    <span className="ch-order">{ch.orderIndex + 1}.</span> {ch.title}
-                  </button>
-                  {safeActiveChapter === ch.id && ch.summary && (
-                    <p className="ch-summary">{ch.summary}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
+      {activeTab === "smart-book" ? (
+        <div className={`reader-main ${ratioClass} ${collapsed ? "toc-collapsed" : ""}`}>
+          {!collapsed && (
+            <ChapterSidebar
+              chapters={chapters}
+              activeChapter={safeActiveChapter}
+              onSelect={setActiveChapter}
+            />
           )}
 
-          <h4 style={{ marginTop: 24 }}>內容</h4>
-          {shownContents.length === 0 ? (
-            <p className="muted">這個章節還沒有內容。</p>
-          ) : (
-            shownContents.map((c) => (
-              <p className="para" key={c.id}>
-                {c.pageNumber != null && <span className="pageno">p.{c.pageNumber}</span>}
-                {c.contentText}
-              </p>
-            ))
-          )}
-        </section>
+          <ReaderViewport
+            title={book.title}
+            chapters={chapters}
+            activeChapter={safeActiveChapter}
+            onSelectChapter={setActiveChapter}
+            contents={shownContents}
+            collapsed={collapsed}
+            onToggleCollapsed={() => setCollapsed((v) => !v)}
+            zoom={zoom}
+            onZoomReset={() => undefined}
+            ratio={ratio}
+            onRatio={setRatio}
+            onAskAi={scrollToChat}
+          />
 
-        {/* Right: knowledge QA chat */}
-        <aside className="reader-chat">
-          <h4>知識問答</h4>
-          <ChatPanel bookId={bookId} />
-        </aside>
-      </div>
+          <div className="reader-chat-col" ref={chatRef}>
+            <ChatPanel
+              bookId={bookId}
+              title="AI 問答"
+              subtitle="點擊左側章節可限定提問範圍"
+              quickPrompts={QUICK_PROMPTS}
+              inputPlaceholder="問 AI 問題（支援貼上圖片）..."
+            />
+          </div>
+        </div>
+      ) : (
+        <TabPlaceholder label={READER_TABS.find((t) => t.key === activeTab)?.label ?? ""} />
+      )}
     </div>
   );
 }

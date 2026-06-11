@@ -38,10 +38,21 @@ export function makeBookFileRepo(db: Db) {
       return db.select().from(bookFiles).where(eq(bookFiles.bookId, bookId)).all().map(toFile);
     },
 
+    delete(id: string): void {
+      db.delete(bookFiles).where(eq(bookFiles.id, id)).run();
+    },
+
     updateParseStatus(id: string, status: ParseStatus): void {
       db.update(bookFiles)
         .set({ parseStatus: status, updatedAt: nowIso() })
         .where(eq(bookFiles.id, id))
+        .run();
+    },
+
+    resetParseStatusByBookId(bookId: string, status: ParseStatus = "pending"): void {
+      db.update(bookFiles)
+        .set({ parseStatus: status, updatedAt: nowIso() })
+        .where(eq(bookFiles.bookId, bookId))
         .run();
     }
   };

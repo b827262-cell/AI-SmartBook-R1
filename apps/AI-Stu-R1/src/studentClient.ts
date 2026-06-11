@@ -8,6 +8,10 @@ export interface ChatResponse {
   sessionId: string;
   answer: string;
   chatMode: string;
+  source?: string;
+  provider?: string;
+  model?: string;
+  matchedQuestion?: string;
   messages: ChatMessage[];
 }
 

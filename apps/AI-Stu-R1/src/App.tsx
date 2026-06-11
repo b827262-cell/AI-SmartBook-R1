@@ -1,6 +1,7 @@
 import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { BooksPage } from "./pages/BooksPage";
 import { BookReaderPage } from "./pages/BookReaderPage";
+import { StudentHeader } from "./components/StudentHeader";
 
 /** Legacy /read and /chat routes now resolve to the unified reader. */
 function RedirectToReader() {
@@ -8,21 +9,10 @@ function RedirectToReader() {
   return <Navigate to={`/books/${bookId}`} replace />;
 }
 
-function Header() {
-  return (
-    <header className="stu-header">
-      <div className="inner">
-        <h1>📖 AI SmartBook</h1>
-        <Link to="/books">書庫</Link>
-      </div>
-    </header>
-  );
-}
-
 export function App() {
   return (
     <BrowserRouter>
-      <Header />
+      <StudentHeader />
       <main className="stu-main">
         <Routes>
           <Route path="/" element={<Navigate to="/books" replace />} />

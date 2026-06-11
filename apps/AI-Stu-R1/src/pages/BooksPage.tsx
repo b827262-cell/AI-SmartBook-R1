@@ -1,80 +1,58 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Book } from "@ai-smartbook/schema";
 import { studentClient } from "../studentClient";
-import { BookCard } from "../components/BookCard";
-
-interface CategoryGroup {
-  category: string;
-  books: Book[];
-}
-
-/** Group books by category; counts are derived from data, never hardcoded. */
-function groupByCategory(books: Book[]): CategoryGroup[] {
-  const map = new Map<string, Book[]>();
-  for (const b of books) {
-    const key = b.category?.trim() || "未分類";
-    const list = map.get(key) ?? [];
-    list.push(b);
-    map.set(key, list);
-  }
-  return [...map.entries()]
-    .map(([category, list]) => ({ category, books: list }))
-    .sort((a, b) => b.books.length - a.books.length || a.category.localeCompare(b.category));
-}
+import {
+  groupBooksByCategory,
+  matchesBookSearch,
+  sortBooksNewestFirst,
+  type StudentBook
+} from "../bookDisplay";
+import { HeroSearchSection } from "../components/HeroSearchSection";
+import { BookShelfSection } from "../components/BookShelfSection";
 
 export function BooksPage() {
-  const [books, setBooks] = useState<Book[]>([]);
+  const [books, setBooks] = useState<StudentBook[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     studentClient
       .listBooks()
-      .then((d) => setBooks(d.books))
+      .then((d) => setBooks(d.books as StudentBook[]))
       .catch((e) => setError(String(e.message)))
       .finally(() => setLoading(false));
   }, []);
 
-  const groups = useMemo(() => groupByCategory(books), [books]);
-  const activeGroup = groups.find((g) => g.category === active) ?? null;
+  const filteredBooks = useMemo(
+    () => books.filter((book) => matchesBookSearch(book, query)),
+    [books, query]
+  );
+  const groups = useMemo(() => groupBooksByCategory(filteredBooks), [filteredBooks]);
+  const latestBooks = useMemo(
+    () => sortBooksNewestFirst(filteredBooks).slice(0, 8),
+    [filteredBooks]
+  );
 
   return (
-    <div>
-      <h2 style={{ marginTop: 0 }}>智能書本</h2>
-      <p className="muted">選擇一個類科，瀏覽該類科底下的書本。</p>
-      {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
+    <div className="books-homepage">
+      <HeroSearchSection query={query} onQueryChange={setQuery} />
 
-      {loading ? (
-        <p className="muted">載入中…</p>
-      ) : books.length === 0 ? (
-        <p className="muted">目前沒有可閱讀的書本。</p>
-      ) : !activeGroup ? (
-        <div className="category-grid">
-          {groups.map((g) => (
-            <button key={g.category} className="category-card" onClick={() => setActive(g.category)}>
-              <span className="cat-name">{g.category}</span>
-              <span className="cat-count">{g.books.length} 本</span>
-            </button>
-          ))}
+      <section className="books-homepage-state">
+        <div className="bookshelf-inner">
+          {error ? <p className="error-text">{error}</p> : null}
+          {loading ? <p className="muted">載入中…</p> : null}
+          {!loading && !error && books.length === 0 ? (
+            <p className="muted">目前沒有可閱讀的書本。</p>
+          ) : null}
+          {!loading && !error && books.length > 0 && filteredBooks.length === 0 ? (
+            <p className="muted">找不到符合搜尋條件的書籍。</p>
+          ) : null}
         </div>
-      ) : (
-        <div>
-          <div className="row" style={{ marginBottom: 16, gap: 12, alignItems: "center" }}>
-            <button className="back-link" onClick={() => setActive(null)}>
-              ← 所有類科
-            </button>
-            <h3 style={{ margin: 0 }}>
-              {activeGroup.category}（{activeGroup.books.length} 本）
-            </h3>
-          </div>
-          <div className="book-grid">
-            {activeGroup.books.map((b) => (
-              <BookCard key={b.id} book={b} />
-            ))}
-          </div>
-        </div>
-      )}
+      </section>
+
+      {!loading && !error && filteredBooks.length > 0 ? (
+        <BookShelfSection groups={groups} latestBooks={latestBooks} />
+      ) : null}
     </div>
   );
 }

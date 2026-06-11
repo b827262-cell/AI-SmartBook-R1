@@ -48,6 +48,23 @@ export function FilesTab({ bookId }: { bookId: string }) {
     }
   }
 
+  async function onDelete(fileId: string, fileName: string) {
+    if (!window.confirm(`確定刪除檔案「${fileName}」？`)) return;
+
+    setBusy(true);
+    setError("");
+    setMsg("");
+    try {
+      await adminApi.deleteFile(bookId, fileId);
+      setMsg(`已刪除 ${fileName}`);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
       <div className="card">
@@ -73,7 +90,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                 <th>檔名</th>
                 <th>大小</th>
                 <th>解析狀態</th>
-                <th></th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -85,9 +102,18 @@ export function FilesTab({ bookId }: { bookId: string }) {
                     <span className={`badge ${f.parseStatus}`}>{f.parseStatus}</span>
                   </td>
                   <td>
-                    <button className="btn secondary" onClick={() => onParse(f.id)} disabled={busy}>
-                      解析
-                    </button>
+                    <div className="row" style={{ gap: 8 }}>
+                      <button className="btn secondary" onClick={() => onParse(f.id)} disabled={busy}>
+                        解析
+                      </button>
+                      <button
+                        className="btn secondary"
+                        onClick={() => onDelete(f.id, f.fileName)}
+                        disabled={busy}
+                      >
+                        刪除
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
