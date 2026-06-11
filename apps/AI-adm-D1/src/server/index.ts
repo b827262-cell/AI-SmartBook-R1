@@ -18,6 +18,7 @@ import {
   createChapterInputSchema,
   updateChapterInputSchema,
   chatRequestSchema,
+  studentChatRequestSchema,
   type AiJobType,
   type BookAiJob
 } from "@ai-smartbook/schema";
@@ -315,10 +316,41 @@ app.get("/api/student/books/:bookId/contents", (req, res) => {
 app.post("/api/student/books/:bookId/chat", (req, res) => {
   const book = findPublishedBook(String(req.params.bookId));
   if (!book) return fail(res, 404, "book not found");
-  const parsed = chatRequestSchema.safeParse(req.body);
+  // Accept both { message } (student UX) and { question } (legacy) bodies.
+  const parsed = studentChatRequestSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, parsed.error.message);
-  const result = keywordChat(parsed.data.question, book.id);
-  res.json({ ...result, chatMode: "keyword" });
+  const question = parsed.data.message ?? parsed.data.question ?? "";
+  if (!question.trim()) return fail(res, 400, "message is required");
+
+  // Resolve or create a chat session bound to this book.
+  let sessionId = parsed.data.sessionId;
+  if (sessionId) {
+    const session = repos.chat.findSessionById(sessionId);
+    if (!session || session.bookId !== book.id) sessionId = undefined;
+  }
+  if (!sessionId) {
+    sessionId = repos.chat.createSession({ bookId: book.id, title: question.slice(0, 40) }).id;
+  }
+
+  const { answer } = keywordChat(question, book.id);
+  repos.chat.addMessage({ sessionId, role: "user", content: question });
+  repos.chat.addMessage({ sessionId, role: "assistant", content: answer });
+
+  res.json({
+    sessionId,
+    answer,
+    chatMode: "keyword",
+    messages: repos.chat.findMessages(sessionId)
+  });
+});
+
+app.get("/api/student/books/:bookId/chat-sessions/:sessionId", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const session = repos.chat.findSessionById(String(req.params.sessionId));
+  // Only expose sessions that belong to this published book.
+  if (!session || session.bookId !== book.id) return fail(res, 404, "session not found");
+  res.json({ sessionId: session.id, messages: repos.chat.findMessages(session.id) });
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);

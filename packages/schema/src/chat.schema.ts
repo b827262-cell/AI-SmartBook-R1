@@ -41,3 +41,15 @@ export const chatRequestSchema = z.object({
   sessionId: z.string().optional()
 });
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
+
+/**
+ * Student chat body. Accepts `message` (preferred) or legacy `question`, plus an
+ * optional `sessionId` to continue persisted chat history. Presence of a real
+ * question is validated in the handler so either field works.
+ */
+export const studentChatRequestSchema = z.object({
+  message: z.string().optional(),
+  question: z.string().optional(),
+  sessionId: z.string().optional()
+});
+export type StudentChatRequest = z.infer<typeof studentChatRequestSchema>;

@@ -31,6 +31,10 @@ export function makeChatRepo(db: Db) {
       return row;
     },
 
+    findSessionById(id: string): ChatSession | null {
+      return db.select().from(chatSessions).where(eq(chatSessions.id, id)).get() ?? null;
+    },
+
     addMessage(input: CreateChatMessageInput): ChatMessage {
       const row: MessageRow = {
         id: newId("msg"),
