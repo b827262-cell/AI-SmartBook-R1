@@ -6,6 +6,7 @@ export const books = sqliteTable("books", {
   subtitle: text("subtitle"),
   description: text("description"),
   coverUrl: text("cover_url"),
+  category: text("category").notNull().default("未分類"),
   status: text("status").notNull().default("draft"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()

@@ -8,6 +8,7 @@ const STATEMENTS = [
     subtitle TEXT,
     description TEXT,
     cover_url TEXT,
+    category TEXT NOT NULL DEFAULT '未分類',
     status TEXT NOT NULL DEFAULT 'draft',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -90,12 +91,31 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_book_qa_logs_book ON book_qa_logs(book_id)`
 ];
 
-/** Idempotently create all tables on the given SQLite connection. */
+/**
+ * Add a column to an existing table only when it is missing. SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, so we probe `PRAGMA table_info` first. This keeps
+ * migrations non-destructive and safe to re-run against older databases.
+ */
+function addColumnIfMissing(
+  sqlite: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return;
+  sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+}
+
+/** Idempotently create all tables (and backfill new columns) on the connection. */
 export function runMigrations(sqlite: Database.Database): void {
   const tx = sqlite.transaction(() => {
     for (const stmt of STATEMENTS) {
       sqlite.exec(stmt);
     }
+    // Backfill columns added after the initial schema. Existing rows pick up the
+    // DEFAULT, so legacy books become '未分類' without a destructive migration.
+    addColumnIfMissing(sqlite, "books", "category", "category TEXT NOT NULL DEFAULT '未分類'");
   });
   tx();
 }

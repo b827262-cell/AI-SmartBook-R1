@@ -9,6 +9,7 @@ export const bookSchema = z.object({
   subtitle: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   coverUrl: z.string().nullable().optional(),
+  category: z.string(),
   status: bookStatusSchema,
   createdAt: z.string(),
   updatedAt: z.string()
@@ -20,6 +21,7 @@ export const createBookInputSchema = z.object({
   subtitle: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   coverUrl: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
   status: bookStatusSchema.optional()
 });
 export type CreateBookInput = z.infer<typeof createBookInputSchema>;
