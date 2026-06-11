@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import type { Book, BookChapter, BookContent } from "@ai-smartbook/schema";
 import type { StudentBookDetail, StudentDataSource } from "./dataSource";
@@ -86,8 +88,24 @@ export class SqliteDataSource implements StudentDataSource {
   private readonly db: Database.Database;
 
   constructor(dbPath: string, readonly = true) {
-    this.db = new Database(dbPath, { readonly, fileMustExist: false });
-    this.db.pragma("journal_mode = WAL");
+    // Make sure the parent directory exists before opening; in dev this keeps
+    // a missing data dir from crashing startup. On an unwritable path (e.g.
+    // /opt) this is a no-op and the open below surfaces a clear error instead.
+    const dir = dirname(dbPath);
+    if (!existsSync(dir)) {
+      try {
+        mkdirSync(dir, { recursive: true });
+      } catch {
+        /* ignore — surfaced as an explicit open error below */
+      }
+    }
+
+    // A read-only connection must require an existing file (it cannot create
+    // one) and must never run a writable PRAGMA such as journal_mode = WAL.
+    this.db = new Database(dbPath, { readonly, fileMustExist: readonly });
+    if (!readonly) {
+      this.db.pragma("journal_mode = WAL");
+    }
   }
 
   async listBooks(): Promise<Book[]> {
