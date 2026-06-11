@@ -53,6 +53,62 @@ function fail(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
 }
 
+function tokenizeQuestion(question: string): string[] {
+  const grams = new Set<string>();
+  for (const w of question.split(/[\s,，。．.!?？！、:：;；()「」『』\[\]]+/)) {
+    const t = w.trim().toLowerCase();
+    if (t.length >= 2 && /[a-z0-9]/.test(t)) grams.add(t);
+  }
+  const cleaned = question.replace(/[\s,，。．.!?？！、:：;；()「」『』\[\]]+/g, "").toLowerCase();
+  for (let i = 0; i < cleaned.length - 1; i++) {
+    grams.add(cleaned.slice(i, i + 2));
+  }
+  return [...grams];
+}
+
+function keywordChat(question: string, bookId: string) {
+  const tokens = tokenizeQuestion(question);
+  const contents = repos.contents.findByBookId(bookId);
+
+  if (tokens.length === 0 || contents.length === 0) {
+    return {
+      answer: "目前書本內容中沒有找到明確答案，請換個關鍵字再試一次。",
+      matchedContentIds: []
+    };
+  }
+
+  const scored = contents
+    .map((c) => {
+      const text = c.contentText.toLowerCase();
+      const score = tokens.reduce((acc, t) => acc + (text.includes(t) ? 1 : 0), 0);
+      return { c, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  if (scored.length === 0) {
+    return {
+      answer: "目前書本內容中沒有找到明確答案，請換個關鍵字再試一次。",
+      matchedContentIds: []
+    };
+  }
+
+  return {
+    answer: [
+      "根據書本內容，找到以下相關段落：",
+      ...scored.map((s, i) => `${i + 1}. ${s.c.contentText}`)
+    ].join("\n"),
+    matchedContentIds: scored.map((s) => s.c.id)
+  };
+}
+
+function findPublishedBook(bookId: string) {
+  const book = repos.books.findById(bookId);
+  if (!book || book.status !== "published") return null;
+  return book;
+}
+
 /** Wrap an AI operation as a tracked book_ai_job row. */
 async function runJob<T>(
   bookId: string,
@@ -236,6 +292,33 @@ app.get("/api/admin/books/:bookId/ai-jobs", (req, res) => {
 
 app.get("/api/admin/books/:bookId/qa-logs", (req, res) => {
   res.json({ logs: repos.qaLogs.findByBookId(req.params.bookId) });
+});
+
+// ---- Student read-only API -----------------------------------------------
+app.get("/api/student/books", (_req, res) => {
+  res.json({ mode: "repo-api", books: repos.books.findPublished() });
+});
+
+app.get("/api/student/books/:bookId", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const chapters = repos.chapters.findByBookId(book.id);
+  res.json({ book: { ...book, chapters } });
+});
+
+app.get("/api/student/books/:bookId/contents", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  res.json({ contents: repos.contents.findByBookId(book.id) });
+});
+
+app.post("/api/student/books/:bookId/chat", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const parsed = chatRequestSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  const result = keywordChat(parsed.data.question, book.id);
+  res.json({ ...result, chatMode: "keyword" });
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);
