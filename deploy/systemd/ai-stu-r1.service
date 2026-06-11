@@ -1,0 +1,16 @@
+[Unit]
+Description=AI-Stu-R1 Student API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/AI-Stu-R1
+EnvironmentFile=/etc/ai-stu-r1/student.env
+ExecStart=/usr/bin/node /opt/AI-Stu-R1/server/stu-api.js
+Restart=always
+RestartSec=3
+MemoryHigh=200M
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

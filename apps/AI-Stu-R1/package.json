@@ -1,0 +1,27 @@
+{
+  "name": "AI-Stu-R1",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"lint placeholder\"",
+    "server:dev": "tsx server/stu-api.ts"
+  },
+  "dependencies": {
+    "@ai-smartbook/schema": "workspace:*",
+    "@ai-smartbook/ui": "workspace:*",
+    "@ai-smartbook/student-runtime": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "tsx": "latest"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@ai-smartbook/book-core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"lint placeholder\""
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "@types/pdf-parse": "latest"
+  },
+  "dependencies": {
+    "@ai-smartbook/ai": "workspace:*",
+    "@ai-smartbook/db": "workspace:*",
+    "@ai-smartbook/schema": "workspace:*",
+    "pdf-parse": "latest"
+  }
+}

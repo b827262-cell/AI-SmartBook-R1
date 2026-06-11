@@ -1,0 +1,33 @@
+{
+  "name": "AI-adm-D1",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5174",
+    "server:dev": "tsx src/server/index.ts",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"lint placeholder\""
+  },
+  "dependencies": {
+    "@ai-smartbook/schema": "workspace:*",
+    "@ai-smartbook/db": "workspace:*",
+    "@ai-smartbook/ui": "workspace:*",
+    "@ai-smartbook/book-core": "workspace:*",
+    "@ai-smartbook/ai": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "tsx": "latest",
+    "@types/express": "latest",
+    "@types/multer": "latest"
+  }
+}

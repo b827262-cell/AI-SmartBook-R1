@@ -1,0 +1,17 @@
+{
+  "name": "ai-smartbook-r1",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Modular SmartBook R1 monorepo: student frontend, admin backend, SQLite, PDF parsing, admin AI modules.",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "db:migrate": "pnpm --filter @ai-smartbook/db db:migrate",
+    "db:seed": "pnpm --filter @ai-smartbook/db db:seed",
+    "student:build": "pnpm --filter AI-Stu-R1 build",
+    "admin:build": "pnpm --filter AI-adm-D1 build"
+  }
+}
