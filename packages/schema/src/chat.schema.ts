@@ -8,7 +8,16 @@ export const chatSessionSchema = z.object({
   bookId: z.string(),
   userId: z.string().nullable().optional(),
   title: z.string(),
-  createdAt: z.string()
+  createdAt: z.string(),
+  lastSeenAt: z.string().nullable().optional(),
+  userAgent: z.string().nullable().optional(),
+  osName: z.string().nullable().optional(),
+  osVersion: z.string().nullable().optional(),
+  browserName: z.string().nullable().optional(),
+  browserVersion: z.string().nullable().optional(),
+  deviceType: z.string().nullable().optional(),
+  deviceVendor: z.string().nullable().optional(),
+  deviceModel: z.string().nullable().optional()
 });
 export type ChatSession = z.infer<typeof chatSessionSchema>;
 
@@ -24,7 +33,16 @@ export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export const createChatSessionInputSchema = z.object({
   bookId: z.string(),
   userId: z.string().nullable().optional(),
-  title: z.string().optional()
+  title: z.string().optional(),
+  lastSeenAt: z.string().nullable().optional(),
+  userAgent: z.string().nullable().optional(),
+  osName: z.string().nullable().optional(),
+  osVersion: z.string().nullable().optional(),
+  browserName: z.string().nullable().optional(),
+  browserVersion: z.string().nullable().optional(),
+  deviceType: z.string().nullable().optional(),
+  deviceVendor: z.string().nullable().optional(),
+  deviceModel: z.string().nullable().optional()
 });
 export type CreateChatSessionInput = z.infer<typeof createChatSessionInputSchema>;
 

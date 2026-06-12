@@ -65,6 +65,7 @@ export function AdminAccountsPage() {
                   <th>編號</th>
                   <th>學生名稱</th>
                   <th>登入方式</th>
+                  <th>作業系統</th>
                   <th>裝置類型</th>
                   <th>瀏覽器</th>
                   <th>最後上線時間</th>
@@ -77,8 +78,9 @@ export function AdminAccountsPage() {
                     <td><code>{a.id}</code></td>
                     <td>{a.name}</td>
                     <td>{a.loginMethod}</td>
+                    <td>{a.osName}</td>
                     <td>{a.deviceType}</td>
-                    <td>{a.browser}</td>
+                    <td>{a.browserName}</td>
                     <td className="muted">{formatTime(a.lastSeenAt)}</td>
                     <td>
                       <span className={`badge ${a.online ? "parsed" : "draft"}`}>
@@ -92,8 +94,8 @@ export function AdminAccountsPage() {
           </div>
         )}
         <p className="muted" style={{ marginTop: 12 }}>
-          說明：目前系統未持久化 userAgent / 登入方式，裝置與瀏覽器暫顯示「未知」；
-          帳戶以前台對話 session 為單位推算，在線狀態採最近 15 分鐘活動判斷。
+          說明：匿名帳戶以前台對話 session 為單位推算；裝置、作業系統與瀏覽器由後端依
+          request headers 解析並持久化，在線狀態採最近 15 分鐘活動判斷。
         </p>
       </AdminCard>
     </div>

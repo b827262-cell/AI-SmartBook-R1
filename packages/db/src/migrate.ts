@@ -51,7 +51,16 @@ const STATEMENTS = [
     book_id TEXT NOT NULL,
     user_id TEXT,
     title TEXT NOT NULL DEFAULT 'New chat',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT,
+    user_agent TEXT,
+    os_name TEXT,
+    os_version TEXT,
+    browser_name TEXT,
+    browser_version TEXT,
+    device_type TEXT,
+    device_vendor TEXT,
+    device_model TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS chat_messages (
     id TEXT PRIMARY KEY,
@@ -81,6 +90,11 @@ const STATEMENTS = [
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_book_files_book ON book_files(book_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_contents_book ON book_contents(book_id)`,
@@ -116,6 +130,15 @@ export function runMigrations(sqlite: Database.Database): void {
     // Backfill columns added after the initial schema. Existing rows pick up the
     // DEFAULT, so legacy books become '未分類' without a destructive migration.
     addColumnIfMissing(sqlite, "books", "category", "category TEXT NOT NULL DEFAULT '未分類'");
+    addColumnIfMissing(sqlite, "chat_sessions", "last_seen_at", "last_seen_at TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "user_agent", "user_agent TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "os_name", "os_name TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "os_version", "os_version TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "browser_name", "browser_name TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "browser_version", "browser_version TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "device_type", "device_type TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "device_vendor", "device_vendor TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "device_model", "device_model TEXT");
   });
   tx();
 }

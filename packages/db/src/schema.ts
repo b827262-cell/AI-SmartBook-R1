@@ -53,7 +53,16 @@ export const chatSessions = sqliteTable("chat_sessions", {
   bookId: text("book_id").notNull(),
   userId: text("user_id"),
   title: text("title").notNull().default("New chat"),
-  createdAt: text("created_at").notNull()
+  createdAt: text("created_at").notNull(),
+  lastSeenAt: text("last_seen_at"),
+  userAgent: text("user_agent"),
+  osName: text("os_name"),
+  osVersion: text("os_version"),
+  browserName: text("browser_name"),
+  browserVersion: text("browser_version"),
+  deviceType: text("device_type"),
+  deviceVendor: text("device_vendor"),
+  deviceModel: text("device_model")
 });
 
 export const chatMessages = sqliteTable("chat_messages", {
@@ -73,6 +82,12 @@ export const bookAiJobs = sqliteTable("book_ai_jobs", {
   outputJson: text("output_json"),
   errorMessage: text("error_message"),
   createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
   updatedAt: text("updated_at").notNull()
 });
 
@@ -97,6 +112,7 @@ export type DbSchema = {
   chatMessages: typeof chatMessages;
   bookAiJobs: typeof bookAiJobs;
   bookQaLogs: typeof bookQaLogs;
+  appSettings: typeof appSettings;
 };
 
 export const schema = {
@@ -107,5 +123,6 @@ export const schema = {
   chatSessions,
   chatMessages,
   bookAiJobs,
-  bookQaLogs
+  bookQaLogs,
+  appSettings
 };

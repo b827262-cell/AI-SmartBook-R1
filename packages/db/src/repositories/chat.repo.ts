@@ -17,6 +17,19 @@ function toMessage(row: MessageRow): ChatMessage {
   return { ...row, role: row.role as ChatRole };
 }
 
+type SessionClientInfo = Pick<
+  ChatSession,
+  | "lastSeenAt"
+  | "userAgent"
+  | "osName"
+  | "osVersion"
+  | "browserName"
+  | "browserVersion"
+  | "deviceType"
+  | "deviceVendor"
+  | "deviceModel"
+>;
+
 export function makeChatRepo(db: Db) {
   return {
     createSession(input: CreateChatSessionInput): ChatSession {
@@ -25,7 +38,16 @@ export function makeChatRepo(db: Db) {
         bookId: input.bookId,
         userId: input.userId ?? null,
         title: input.title ?? "New chat",
-        createdAt: nowIso()
+        createdAt: nowIso(),
+        lastSeenAt: input.lastSeenAt ?? null,
+        userAgent: input.userAgent ?? null,
+        osName: input.osName ?? null,
+        osVersion: input.osVersion ?? null,
+        browserName: input.browserName ?? null,
+        browserVersion: input.browserVersion ?? null,
+        deviceType: input.deviceType ?? null,
+        deviceVendor: input.deviceVendor ?? null,
+        deviceModel: input.deviceModel ?? null
       };
       db.insert(chatSessions).values(row).run();
       return row;
@@ -60,6 +82,22 @@ export function makeChatRepo(db: Db) {
     /** All chat sessions (used by admin dashboard / accounts aggregates). */
     listSessions(): ChatSession[] {
       return db.select().from(chatSessions).orderBy(asc(chatSessions.createdAt)).all();
+    },
+
+    updateSessionClientInfo(id: string, input: SessionClientInfo): ChatSession | null {
+      const patch: Partial<SessionRow> = {};
+      if (input.lastSeenAt !== undefined) patch.lastSeenAt = input.lastSeenAt ?? null;
+      if (input.userAgent !== undefined) patch.userAgent = input.userAgent ?? null;
+      if (input.osName !== undefined) patch.osName = input.osName ?? null;
+      if (input.osVersion !== undefined) patch.osVersion = input.osVersion ?? null;
+      if (input.browserName !== undefined) patch.browserName = input.browserName ?? null;
+      if (input.browserVersion !== undefined) patch.browserVersion = input.browserVersion ?? null;
+      if (input.deviceType !== undefined) patch.deviceType = input.deviceType ?? null;
+      if (input.deviceVendor !== undefined) patch.deviceVendor = input.deviceVendor ?? null;
+      if (input.deviceModel !== undefined) patch.deviceModel = input.deviceModel ?? null;
+      if (Object.keys(patch).length === 0) return this.findSessionById(id);
+      db.update(chatSessions).set(patch).where(eq(chatSessions.id, id)).run();
+      return this.findSessionById(id);
     },
 
     /** All chat messages across sessions (admin dashboard aggregates). */

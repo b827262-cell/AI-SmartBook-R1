@@ -1,4 +1,6 @@
 import type {
+  AppearanceSettings,
+  AppearanceSettingsUpdate,
   Book,
   BookAiJob,
   BookChapter,
@@ -121,7 +123,26 @@ export const adminApi = {
     http<{ deleted: number }>("/api/admin/student-questions/delete", {
       method: "POST",
       body: JSON.stringify({ ids })
-    })
+    }),
+
+  // ---- Appearance settings -----------------------------------------------
+  getAppearanceSettings: () =>
+    http<{ settings: AppearanceSettings }>("/api/appearance-settings"),
+
+  updateAppearanceSettings: (input: AppearanceSettingsUpdate) =>
+    http<{ settings: AppearanceSettings }>("/api/admin/appearance-settings", {
+      method: "PUT",
+      body: JSON.stringify(input)
+    }),
+
+  uploadAppearanceImage: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return http<{ url: string }>("/api/admin/appearance-settings/upload", {
+      method: "POST",
+      body: form
+    });
+  }
 };
 
 export type DashboardRange = "week" | "month" | "all";
@@ -143,8 +164,9 @@ export interface AdminAccount {
   id: string;
   name: string;
   loginMethod: string;
+  osName: string;
   deviceType: string;
-  browser: string;
+  browserName: string;
   lastSeenAt: string;
   online: boolean;
 }

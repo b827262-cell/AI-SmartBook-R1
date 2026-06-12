@@ -20,8 +20,12 @@ import {
   updateChapterInputSchema,
   chatRequestSchema,
   studentChatRequestSchema,
+  appearanceSettingsSchema,
+  appearanceSettingsUpdateSchema,
+  DEFAULT_APPEARANCE,
   type AiJobType,
-  type BookAiJob
+  type BookAiJob,
+  type ChatSession
 } from "@ai-smartbook/schema";
 
 const { db, sqlite } = getDb();
@@ -74,11 +78,52 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// ---- Appearance image uploads (logo / banner icon) -----------------------
+// Stored under a gitignored uploads dir and served read-only via /api/uploads.
+const APPEARANCE_UPLOAD_DIR = resolve(process.env.UPLOAD_DIR || "./uploads", "appearance");
+const APPEARANCE_IMAGE_TYPES = new Map<string, string>([
+  ["image/png", ".png"],
+  ["image/jpeg", ".jpg"],
+  ["image/webp", ".webp"],
+  ["image/svg+xml", ".svg"]
+]);
+const appearanceUpload = multer({
+  storage: multer.diskStorage({
+    destination(_req, _file, cb) {
+      if (!existsSync(APPEARANCE_UPLOAD_DIR)) mkdirSync(APPEARANCE_UPLOAD_DIR, { recursive: true });
+      cb(null, APPEARANCE_UPLOAD_DIR);
+    },
+    filename(_req, file, cb) {
+      const ext = APPEARANCE_IMAGE_TYPES.get(file.mimetype) || "";
+      cb(null, `${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    cb(null, APPEARANCE_IMAGE_TYPES.has(file.mimetype));
+  }
+});
+
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+// Serve uploaded appearance images read-only (rides the /api proxy in both apps).
+app.use("/api/uploads/appearance", express.static(APPEARANCE_UPLOAD_DIR));
 
 function fail(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
+}
+
+const APPEARANCE_KEY = "appearance";
+
+/** Load appearance settings merged over defaults (never throws / never blank). */
+function loadAppearance() {
+  const raw = repos.settings.get(APPEARANCE_KEY);
+  if (!raw) return DEFAULT_APPEARANCE;
+  try {
+    return appearanceSettingsSchema.parse({ ...DEFAULT_APPEARANCE, ...JSON.parse(raw) });
+  } catch {
+    return DEFAULT_APPEARANCE;
+  }
 }
 
 function tokenizeQuestion(question: string): string[] {
@@ -174,6 +219,151 @@ function keywordChat(question: string, bookId: string) {
       ...scored.map((s, i) => `${i + 1}. ${s.c.contentText}`)
     ].join("\n"),
     matchedContentIds: scored.map((s) => s.c.id)
+  };
+}
+
+type ClientInfo = {
+  userAgent: string | null;
+  browserName: string;
+  browserVersion: string | null;
+  osName: string;
+  osVersion: string | null;
+  deviceType: string;
+  deviceVendor: string | null;
+  deviceModel: string | null;
+};
+
+function headerValue(req: Request, name: string): string {
+  const value = req.headers[name];
+  return Array.isArray(value) ? value.join(", ") : typeof value === "string" ? value : "";
+}
+
+function normalizeOs(rawPlatform: string, userAgent: string) {
+  const platform = rawPlatform.replace(/"/g, "").trim().toLowerCase();
+  const ua = userAgent.toLowerCase();
+
+  if (platform.includes("ios") || /iphone|ipad|ipod/.test(ua)) {
+    const match = userAgent.match(/OS (\d+(?:[_\.\d]+)?)/i);
+    return { name: "iOS", version: match ? match[1].replace(/_/g, ".") : null };
+  }
+  if (platform.includes("android") || /android/.test(ua)) {
+    const match = userAgent.match(/Android (\d+(?:\.\d+)?)/i);
+    return { name: "Android", version: match ? match[1] : null };
+  }
+  if (platform.includes("mac") || /mac os x/.test(ua)) {
+    const match = userAgent.match(/Mac OS X (\d+(?:[_\.\d]+)?)/i);
+    return { name: "macOS", version: match ? match[1].replace(/_/g, ".") : null };
+  }
+  if (platform.includes("win") || /windows nt/.test(ua)) {
+    const match = userAgent.match(/Windows NT ([0-9.]+)/i);
+    return { name: "Windows", version: match ? match[1] : null };
+  }
+  if (platform.includes("linux") || /linux|x11/.test(ua)) {
+    return { name: "Linux", version: null };
+  }
+  return { name: "未知", version: null };
+}
+
+function normalizeBrowser(secChUa: string, userAgent: string) {
+  const ch = secChUa.toLowerCase();
+
+  if (ch.includes("microsoft edge") || /Edg\/([0-9.]+)/.test(userAgent)) {
+    return {
+      name: "Edge",
+      version:
+        userAgent.match(/Edg\/([0-9.]+)/)?.[1] ??
+        secChUa.match(/Microsoft Edge";v="([^"]+)"/i)?.[1] ??
+        null
+    };
+  }
+  if (/Firefox\/([0-9.]+)/.test(userAgent)) {
+    return { name: "Firefox", version: userAgent.match(/Firefox\/([0-9.]+)/)?.[1] ?? null };
+  }
+  if (
+    (ch.includes("google chrome") || ch.includes("chromium") || /Chrome\/([0-9.]+)/.test(userAgent)) &&
+    !/Edg\/|OPR\//.test(userAgent)
+  ) {
+    return {
+      name: "Chrome",
+      version:
+        userAgent.match(/Chrome\/([0-9.]+)/)?.[1] ??
+        secChUa.match(/(?:Google Chrome|Chromium)";v="([^"]+)"/i)?.[1] ??
+        null
+    };
+  }
+  if (
+    /Version\/([0-9.]+).+Safari\//.test(userAgent) &&
+    !/Chrome\/|Chromium\/|Edg\//.test(userAgent)
+  ) {
+    return { name: "Safari", version: userAgent.match(/Version\/([0-9.]+)/)?.[1] ?? null };
+  }
+  return { name: "未知", version: null };
+}
+
+function normalizeDeviceType(rawMobile: string, userAgent: string, osName: string) {
+  const mobile = rawMobile.replace(/"/g, "").trim().toLowerCase();
+  const ua = userAgent.toLowerCase();
+
+  if (/ipad|tablet/.test(ua)) return "Tablet";
+  if (mobile === "?1") return /ipad|tablet/.test(ua) ? "Tablet" : "Mobile";
+  if (mobile === "?0") {
+    if (osName === "Android" && /tablet/.test(ua)) return "Tablet";
+    return "Desktop";
+  }
+  if (/iphone|ipod|mobile/.test(ua)) return "Mobile";
+  if (osName === "Android") return /mobile/.test(ua) ? "Mobile" : "Tablet";
+  if (osName === "Windows" || osName === "macOS" || osName === "Linux") return "Desktop";
+  return "未知";
+}
+
+function detectDeviceModel(userAgent: string, osName: string) {
+  if (osName === "iOS") {
+    if (/iPad/i.test(userAgent)) return { vendor: "Apple", model: "iPad" };
+    if (/iPhone/i.test(userAgent)) return { vendor: "Apple", model: "iPhone" };
+  }
+  const androidMatch = userAgent.match(/Android [^;)]*;\s*([^;)]+?)\s+Build\//i);
+  if (androidMatch) {
+    return { vendor: null, model: androidMatch[1].trim() || null };
+  }
+  return { vendor: null, model: null };
+}
+
+function parseClientInfo(req: Request): ClientInfo {
+  const userAgent = headerValue(req, "user-agent").trim();
+  const secChUa = headerValue(req, "sec-ch-ua");
+  const secChUaPlatform = headerValue(req, "sec-ch-ua-platform");
+  const secChUaMobile = headerValue(req, "sec-ch-ua-mobile");
+
+  const os = normalizeOs(secChUaPlatform, userAgent);
+  const browser = normalizeBrowser(secChUa, userAgent);
+  const deviceType = normalizeDeviceType(secChUaMobile, userAgent, os.name);
+  const device = detectDeviceModel(userAgent, os.name);
+
+  return {
+    userAgent: userAgent || null,
+    browserName: browser.name,
+    browserVersion: browser.version,
+    osName: os.name,
+    osVersion: os.version,
+    deviceType,
+    deviceVendor: device.vendor,
+    deviceModel: device.model
+  };
+}
+
+function enrichSessionClientInfo(existing: ChatSession | null, next: ClientInfo) {
+  const keep = (current?: string | null, incoming?: string | null) =>
+    incoming && incoming !== "未知" ? incoming : current ?? null;
+  return {
+    lastSeenAt: new Date().toISOString(),
+    userAgent: keep(existing?.userAgent, next.userAgent),
+    osName: keep(existing?.osName, next.osName) ?? "未知",
+    osVersion: keep(existing?.osVersion, next.osVersion),
+    browserName: keep(existing?.browserName, next.browserName) ?? "未知",
+    browserVersion: keep(existing?.browserVersion, next.browserVersion),
+    deviceType: keep(existing?.deviceType, next.deviceType) ?? "未知",
+    deviceVendor: keep(existing?.deviceVendor, next.deviceVendor),
+    deviceModel: keep(existing?.deviceModel, next.deviceModel)
   };
 }
 
@@ -534,12 +724,21 @@ app.post("/api/student/books/:bookId/chat", (req, res) => {
 
   // Resolve or create a chat session bound to this book.
   let sessionId = parsed.data.sessionId;
+  const requestClientInfo = parseClientInfo(req);
   if (sessionId) {
     const session = repos.chat.findSessionById(sessionId);
-    if (!session || session.bookId !== book.id) sessionId = undefined;
+    if (!session || session.bookId !== book.id) {
+      sessionId = undefined;
+    } else {
+      repos.chat.updateSessionClientInfo(session.id, enrichSessionClientInfo(session, requestClientInfo));
+    }
   }
   if (!sessionId) {
-    sessionId = repos.chat.createSession({ bookId: book.id, title: question.slice(0, 40) }).id;
+    sessionId = repos.chat.createSession({
+      bookId: book.id,
+      title: question.slice(0, 40),
+      ...enrichSessionClientInfo(null, requestClientInfo)
+    }).id;
   }
 
   const manualAnswer = findManualQaAnswer(book.id, question);
@@ -575,15 +774,14 @@ app.get("/api/student/books/:bookId/chat-sessions/:sessionId", (req, res) => {
   const session = repos.chat.findSessionById(String(req.params.sessionId));
   // Only expose sessions that belong to this published book.
   if (!session || session.bookId !== book.id) return fail(res, 404, "session not found");
+  repos.chat.updateSessionClientInfo(session.id, enrichSessionClientInfo(session, parseClientInfo(req)));
   res.json({ sessionId: session.id, messages: repos.chat.findMessages(session.id) });
 });
 
 // ---- Admin dashboard / accounts ------------------------------------------
-// NOTE: there is no dedicated users/accounts table and the front-end does not
-// persist a userAgent or login method, so "accounts" are derived from chat
-// sessions (one visitor session = one account proxy) and device/browser are
-// reported as 未知. Online uses a 15-minute last-activity window. No schema
-// change is made here.
+// There is no dedicated users/accounts table. "Accounts" are derived from chat
+// sessions (one visitor session = one account proxy), with client info stored
+// on the session from request headers.
 const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 
 /** Local-timezone YYYY-MM-DD key (avoids UTC cross-day miscounts). */
@@ -613,6 +811,12 @@ function lastSeenBySession(messages: { sessionId: string; createdAt: string }[])
   return map;
 }
 
+function sessionLastActivityMs(session: ChatSession, messageLastSeen: Map<string, number>) {
+  const fromSession = Date.parse(session.lastSeenAt || session.createdAt);
+  const fromMessages = messageLastSeen.get(session.id) ?? 0;
+  return Math.max(fromSession, fromMessages);
+}
+
 app.get("/api/admin/dashboard/stats", (req, res) => {
   const range = String(req.query.range || "month");
   const sessions = repos.chat.listSessions();
@@ -621,7 +825,7 @@ app.get("/api/admin/dashboard/stats", (req, res) => {
   const lastSeen = lastSeenBySession(messages);
 
   // One account proxy per session (no real user identity is tracked).
-  const accountLast = sessions.map((s) => lastSeen.get(s.id) ?? Date.parse(s.createdAt));
+  const accountLast = sessions.map((s) => sessionLastActivityMs(s, lastSeen));
   const totalUsers = accountLast.length;
   const activeUsers = accountLast.filter((t) => now - t <= ONLINE_WINDOW_MS).length;
   const totalConversations = sessions.length;
@@ -652,13 +856,14 @@ app.get("/api/admin/accounts", (_req, res) => {
 
   const accounts = sessions
     .map((s) => {
-      const last = lastSeen.get(s.id) ?? Date.parse(s.createdAt);
+      const last = sessionLastActivityMs(s, lastSeen);
       return {
         id: s.userId || s.id,
         name: s.title?.trim() || "匿名訪客",
         loginMethod: s.userId ? "帳號登入" : "匿名進入",
-        deviceType: "未知", // userAgent is not persisted
-        browser: "未知",
+        osName: s.osName || "未知",
+        deviceType: s.deviceType || "未知",
+        browserName: s.browserName || "未知",
         lastSeenAt: new Date(last).toISOString(),
         online: now - last <= ONLINE_WINDOW_MS
       };
@@ -704,6 +909,27 @@ app.post("/api/admin/student-questions/delete", (req, res) => {
     : [];
   for (const id of ids) repos.chat.deleteMessage(id);
   res.json({ deleted: ids.length });
+});
+
+// ---- Appearance settings -------------------------------------------------
+// Public read (admin + student); admin-only update. Missing settings fall back
+// to defaults so the UI never blanks out.
+app.get("/api/appearance-settings", (_req, res) => {
+  res.json({ settings: loadAppearance() });
+});
+
+app.put("/api/admin/appearance-settings", (req, res) => {
+  const parsed = appearanceSettingsUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  const merged = appearanceSettingsSchema.parse({ ...loadAppearance(), ...parsed.data });
+  repos.settings.set(APPEARANCE_KEY, JSON.stringify(merged));
+  res.json({ settings: merged });
+});
+
+app.post("/api/admin/appearance-settings/upload", appearanceUpload.single("file"), (req, res) => {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) return fail(res, 400, "image is required (png/jpg/jpeg/webp/svg, <=2MB)");
+  res.status(201).json({ url: `/api/uploads/appearance/${file.filename}` });
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);
