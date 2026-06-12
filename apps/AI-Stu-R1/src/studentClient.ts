@@ -1,4 +1,10 @@
-import type { Book, BookChapter, BookContent, ChatMessage } from "@ai-smartbook/schema";
+import type {
+  AppearanceSettings,
+  Book,
+  BookChapter,
+  BookContent,
+  ChatMessage
+} from "@ai-smartbook/schema";
 
 export interface BookDetail extends Book {
   chapters: BookChapter[];
@@ -48,5 +54,8 @@ export const studentClient = {
   getBookChatSession: (bookId: string, sessionId: string) =>
     http<{ sessionId: string; messages: ChatMessage[] }>(
       `/api/student/books/${bookId}/chat-sessions/${sessionId}`
-    )
+    ),
+
+  getAppearanceSettings: () =>
+    http<{ settings: AppearanceSettings }>("/api/appearance-settings")
 };

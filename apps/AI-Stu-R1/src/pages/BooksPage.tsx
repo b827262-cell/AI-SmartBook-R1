@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { studentClient } from "../studentClient";
+import { useAppearance } from "../appearance";
 import {
   groupBooksByCategory,
   matchesBookSearch,
@@ -10,10 +11,57 @@ import { HeroSearchSection } from "../components/HeroSearchSection";
 import { BookShelfSection } from "../components/BookShelfSection";
 
 export function BooksPage() {
+  const a = useAppearance();
   const [books, setBooks] = useState<StudentBook[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+
+  // Build the page background from the admin appearance settings. A broken
+  // image URL simply reveals the white base colour (no white-screen).
+  function buildPageBackground(): string {
+    if (a.studentPageBackgroundMode === "solid") {
+      return a.studentPageBackgroundColor || "#ffffff";
+    }
+    if (a.studentPageBackgroundMode === "gradient") {
+      return `linear-gradient(180deg, ${a.studentPageBackgroundGradientFrom}, ${a.studentPageBackgroundGradientTo})`;
+    }
+    // image
+    if (!a.studentPageBackgroundImageUrl) return "#ffffff";
+    const size = a.studentPageBackgroundImageFit;
+    return `#ffffff url("${a.studentPageBackgroundImageUrl}") ${a.studentPageBackgroundImagePosition} / ${size} ${a.studentPageBackgroundImageRepeat}`;
+  }
+
+  // Apply the homepage background to <body> only while on this page.
+  useEffect(() => {
+    const bg = buildPageBackground();
+    document.documentElement.style.setProperty("--student-page-background", bg);
+    return () => {
+      document.documentElement.style.removeProperty("--student-page-background");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    a.studentPageBackgroundMode,
+    a.studentPageBackgroundColor,
+    a.studentPageBackgroundGradientFrom,
+    a.studentPageBackgroundGradientTo,
+    a.studentPageBackgroundImageUrl,
+    a.studentPageBackgroundImageFit,
+    a.studentPageBackgroundImagePosition,
+    a.studentPageBackgroundImageRepeat
+  ]);
+
+  // Expose the layout settings as CSS variables consumed by the homepage CSS.
+  const layoutVars = {
+    "--stu-content-max": `${a.studentContentMaxWidth}px`,
+    "--stu-cat-gap": `${a.studentCategoryGap}px`,
+    "--stu-cat-title": `${a.studentCategoryTitleFontSize}px`,
+    "--stu-card-w": `${a.studentBookCardWidth}px`,
+    "--stu-cover-h": `${a.studentBookCoverHeight}px`,
+    "--stu-grid-gap": `${a.studentBookGridGap}px`,
+    "--stu-card-radius": `${a.studentBookCardRadius}px`,
+    "--stu-cover-fit": a.studentBookCoverFit
+  } as CSSProperties;
 
   useEffect(() => {
     studentClient
@@ -34,7 +82,7 @@ export function BooksPage() {
   );
 
   return (
-    <div className="books-homepage">
+    <div className="books-homepage" style={layoutVars}>
       <HeroSearchSection query={query} onQueryChange={setQuery} />
 
       <section className="books-homepage-state">

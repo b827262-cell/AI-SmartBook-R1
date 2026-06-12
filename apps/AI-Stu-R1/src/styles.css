@@ -12,10 +12,11 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
+  min-height: 100vh;
   font-family: "Noto Sans TC", "Segoe UI", sans-serif;
-  background:
-    radial-gradient(circle at top left, rgba(17, 113, 223, 0.08), transparent 26%),
-    linear-gradient(180deg, #f4f9fe 0%, #eef5fb 100%);
+  /* Default white; the homepage overrides --student-page-background per the
+     admin appearance settings (other pages fall back to white). */
+  background: var(--student-page-background, #ffffff);
   color: var(--text);
 }
 a { color: var(--primary); text-decoration: none; }
@@ -38,14 +39,31 @@ a { color: var(--primary); text-decoration: none; }
   align-items: center;
   gap: 16px;
 }
-.brand-link, .home-link {
+.brand-link {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   color: var(--text);
   font-weight: 700;
 }
-.home-link { justify-self: center; }
+.brand-logo-img { display: block; }
+/* Compact blue pill home button (configurable via appearance settings). */
+.home-pill {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.home-pill:hover {
+  text-decoration: none;
+  filter: brightness(1.06);
+  box-shadow: 0 4px 12px rgba(11, 99, 216, 0.25);
+}
 .header-icon {
   width: 36px;
   height: 36px;
@@ -163,66 +181,77 @@ a { color: var(--primary); text-decoration: none; }
 }
 .error-text { color: #b91c1c; }
 
-.hero-search-section {
-  padding: 40px 0 8px;
-}
+/* Compact hero (reference-image style) */
+.hero-search-section { padding: 8px 0 4px; }
 .hero-search-inner {
-  max-width: 1120px;
   margin: 0 auto;
-  padding: 32px 24px 18px;
-  border-radius: 28px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 251, 255, 0.98));
-  border: 1px solid rgba(215, 228, 240, 0.96);
-  box-shadow: 0 18px 48px rgba(17, 113, 223, 0.08);
-  text-align: center;
+  padding: 28px 8px;
+  text-align: left;
 }
-.hero-title-row {
-  display: inline-flex;
+/* Optional legacy card variant */
+.hero-search-section.hero-card .hero-search-inner {
+  padding: 24px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fff, #f7fbff);
+  border: 1px solid var(--border);
+  box-shadow: 0 14px 38px rgba(17, 113, 223, 0.07);
+}
+/* Centered (default) hero title block: [icon] title / subtitle */
+.hero-title-block {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  text-align: center;
+  margin-bottom: 16px;
 }
-.hero-title-row h1 {
-  margin: 0;
-  font-size: clamp(30px, 4vw, 44px);
-  line-height: 1.1;
-}
-.hero-mark {
-  width: 56px;
-  height: 56px;
-  border-radius: 999px;
+.hero-title-block.is-left { align-items: flex-start; text-align: left; }
+.hero-title-main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--primary), var(--primary-2));
-  color: #fff;
+  flex-wrap: nowrap;
+  gap: 10px;
 }
-.hero-search-inner p {
-  margin: 12px 0 24px;
-  color: var(--muted);
-  font-size: 16px;
+.hero-title-main h1 { margin: 0; line-height: 1.2; font-weight: 700; white-space: nowrap; }
+/* Subtitle sits inline, on the same line as the title. */
+.hero-subtitle { margin: 0; color: var(--muted); white-space: nowrap; }
+.hero-mark, .hero-mark-img {
+  align-self: center; flex: none;
+  width: 28px; height: 28px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff;
+}
+.hero-mark-img { background: none; }
+.hero-search-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  margin: 0 auto;
 }
 .hero-search-box {
-  max-width: 720px;
-  margin: 0 auto;
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 18px;
-  min-height: 58px;
+  gap: 10px;
+  padding: 0 16px;
   border-radius: 999px;
   background: #fff;
   border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-}
-.hero-search-box input {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  font: inherit;
-  color: var(--text);
   min-width: 0;
 }
+.hero-search-box input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font: inherit; color: var(--text); min-width: 0;
+}
+.hero-assistant-btn {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 18px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  background: #ffffff;
+  color: var(--primary); font: inherit; font-weight: 600; white-space: nowrap;
+}
+.hero-assistant-btn:hover { background: #f4f8ff; border-color: var(--primary); }
 .search-icon {
   width: 18px;
   height: 18px;
@@ -236,11 +265,11 @@ a { color: var(--primary); text-decoration: none; }
   padding-bottom: 32px;
 }
 .bookshelf-inner {
-  max-width: 1120px;
+  max-width: var(--stu-content-max, 864px);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: var(--stu-cat-gap, 44px);
 }
 .bookshelf-section-block {
   display: flex;
@@ -259,7 +288,7 @@ a { color: var(--primary); text-decoration: none; }
 }
 .bookshelf-section-title h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--stu-cat-title, 22px);
 }
 .section-icon { font-size: 18px; }
 .section-count {
@@ -276,20 +305,24 @@ a { color: var(--primary); text-decoration: none; }
 }
 .bookshelf-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--stu-card-w, 160px), 1fr));
+  gap: var(--stu-grid-gap, 16px);
 }
-.book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; }
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--stu-card-w, 160px), 1fr));
+  gap: var(--stu-grid-gap, 16px);
+}
 .book-card {
   background: var(--panel);
-  border-radius: 18px;
+  border-radius: var(--stu-card-radius, 16px);
   overflow: hidden;
-  border: 1px solid rgba(215, 228, 240, 0.92);
-  box-shadow: 0 14px 34px rgba(20, 34, 53, 0.08);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 16px rgba(20, 34, 53, 0.06);
   transition: transform .15s ease, box-shadow .15s ease;
   display: flex; flex-direction: column;
 }
-.book-card:hover { transform: translateY(-4px); box-shadow: 0 22px 42px rgba(20, 34, 53, 0.12); }
+.book-card:hover { transform: translateY(-3px); box-shadow: 0 14px 28px rgba(20, 34, 53, 0.10); }
 .book-card .cover { height: 130px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); }
 .book-card .body { padding: 14px 14px 16px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
 .book-card h3 {
@@ -361,18 +394,23 @@ a { color: var(--primary); text-decoration: none; }
 .back-link { font-size: 14px; background: none; border: none; color: var(--primary); cursor: pointer; padding: 0; }
 
 /* ---- Book cover (with fallback) ------------------------------------------ */
-.book-cover { position: relative; overflow: hidden; background: #e2e8f0; }
-.book-cover.card { aspect-ratio: 3 / 4; }
+.book-cover { position: relative; overflow: hidden; background: #f1f4f8; }
+/* Fixed cover container; textbook covers use contain so they never distort. */
+.book-cover.card { height: var(--stu-cover-h, 214px); }
 .book-cover.hero { width: 100%; aspect-ratio: 3 / 4; border-radius: 14px; }
-.book-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.book-cover.fallback {
-  display: flex; flex-direction: column; justify-content: center; gap: 8px;
-  padding: 18px; color: #fff;
-  background: linear-gradient(150deg, var(--primary), var(--primary-2));
+.book-cover img {
+  width: 100%; height: 100%; object-fit: var(--stu-cover-fit, contain); display: block;
 }
-.book-cover.fallback .fc-category { font-size: 12px; opacity: .85; letter-spacing: .04em; }
-.book-cover.fallback .fc-title { font-size: 18px; font-weight: 700; line-height: 1.4; }
-.book-cover.fallback .fc-author { font-size: 12px; opacity: .8; margin-top: auto; }
+/* Unified fallback (not a full blue card) */
+.book-cover.fallback {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px; text-align: center;
+}
+.book-cover.fallback.fallback-simple { background: #f6f8fb; color: var(--text); border-bottom: 1px solid var(--border); }
+.book-cover.fallback.fallback-gradient { background: linear-gradient(160deg, #eef5ff, #dbe9fb); color: var(--text); }
+.book-cover.fallback .fc-mark { font-size: 30px; line-height: 1; }
+.book-cover.fallback .fc-category { font-size: 12px; color: var(--primary); font-weight: 600; }
+.book-cover.fallback .fc-title { font-size: 14px; font-weight: 700; line-height: 1.4; color: var(--text); }
 
 /* ---- Reader (3-column) --------------------------------------------------- */
 .reader-grid { display: grid; grid-template-columns: 260px 1fr 360px; gap: 22px; align-items: start; }
@@ -410,7 +448,7 @@ a { color: var(--primary); text-decoration: none; }
     row-gap: 10px;
   }
   .brand-link { grid-area: brand; }
-  .home-link { grid-area: home; justify-self: start; }
+  .home-pill { grid-area: home; justify-self: start; }
   .student-user-area { grid-area: user; }
   .hero-search-inner {
     padding: 28px 18px 18px;
@@ -433,16 +471,17 @@ a { color: var(--primary); text-decoration: none; }
     padding: 6px 8px;
   }
   .hero-search-section {
-    padding-top: 22px;
+    padding-top: 14px;
   }
-  .hero-title-row {
-    align-items: flex-start;
+  /* Stack search box and assistant button on phones. */
+  .hero-search-row {
+    flex-wrap: wrap;
   }
-  .hero-title-row h1 {
-    font-size: 30px;
-    text-align: left;
+  .hero-assistant-btn {
+    flex: 1 0 100%;
+    justify-content: center;
   }
-  .hero-search-inner p {
+  .hero-subtitle {
     font-size: 14px;
   }
   .bookshelf-section-title h2 {

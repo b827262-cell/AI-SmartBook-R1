@@ -1,4 +1,5 @@
-import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { AppearanceProvider } from "./appearance";
 import { BooksPage } from "./pages/BooksPage";
 import { BookReaderPage } from "./pages/BookReaderPage";
 import { StudentHeader } from "./components/StudentHeader";
@@ -12,17 +13,19 @@ function RedirectToReader() {
 export function App() {
   return (
     <BrowserRouter>
-      <StudentHeader />
-      <main className="stu-main">
-        <Routes>
-          <Route path="/" element={<Navigate to="/books" replace />} />
-          <Route path="/books" element={<BooksPage />} />
-          <Route path="/books/:bookId" element={<BookReaderPage />} />
-          <Route path="/books/:bookId/read" element={<RedirectToReader />} />
-          <Route path="/books/:bookId/chat" element={<RedirectToReader />} />
-          <Route path="*" element={<Navigate to="/books" replace />} />
-        </Routes>
-      </main>
+      <AppearanceProvider>
+        <StudentHeader />
+        <main className="stu-main">
+          <Routes>
+            <Route path="/" element={<Navigate to="/books" replace />} />
+            <Route path="/books" element={<BooksPage />} />
+            <Route path="/books/:bookId" element={<BookReaderPage />} />
+            <Route path="/books/:bookId/read" element={<RedirectToReader />} />
+            <Route path="/books/:bookId/chat" element={<RedirectToReader />} />
+            <Route path="*" element={<Navigate to="/books" replace />} />
+          </Routes>
+        </main>
+      </AppearanceProvider>
     </BrowserRouter>
   );
 }

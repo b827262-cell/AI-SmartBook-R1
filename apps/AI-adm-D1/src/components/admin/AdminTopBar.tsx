@@ -1,10 +1,20 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAppearance } from "../../appearance";
 
 // Front-end identity constants (no auth API in scope).
 const ADMIN_IDENTITY = { org: "admin", initial: "管", label: "管理者" };
 
-/** Sticky white top bar: hamburger, brand, home link, identity avatar. */
+/** Sticky white top bar: hamburger, configurable brand (name + logo), home. */
 export function AdminTopBar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
+  const { settings } = useAppearance();
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  // Reset the logo error state when the URL changes so a new valid logo shows.
+  useEffect(() => setLogoFailed(false), [settings.headerLogoUrl]);
+
+  const showLogo = !!settings.headerLogoUrl && !logoFailed;
+
   return (
     <header className="admin-topbar">
       <div className="admin-topbar-left">
@@ -16,9 +26,24 @@ export function AdminTopBar({ onToggleSidebar }: { onToggleSidebar: () => void }
         >
           ☰
         </button>
-        <Link to="/admin" className="admin-brand">
-          <span className="admin-brand-mark">iB</span>
-          <span>iBrain 智匯 · AI-adm-D1</span>
+        <Link to="/admin" className="admin-brand" style={{ gap: `${settings.headerLogoTextGap}px` }}>
+          {showLogo ? (
+            <img
+              className="admin-brand-logo"
+              src={settings.headerLogoUrl}
+              alt={settings.systemName}
+              style={{ width: settings.headerLogoSize, height: settings.headerLogoSize }}
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <span
+              className="admin-brand-mark"
+              style={{ width: settings.headerLogoSize, height: settings.headerLogoSize }}
+            >
+              iB
+            </span>
+          )}
+          <span>{settings.systemName}</span>
         </Link>
       </div>
 

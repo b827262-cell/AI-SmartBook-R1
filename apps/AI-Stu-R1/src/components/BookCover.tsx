@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StudentBook } from "../bookDisplay";
 import { getBookAuthorName, getBookCategoryName, getBookCoverUrl } from "../bookDisplay";
+import { useAppearance } from "../appearance";
 
 /**
  * Book cover that renders coverUrl when present and falls back to a generated
@@ -8,6 +9,7 @@ import { getBookAuthorName, getBookCategoryName, getBookCoverUrl } from "../book
  * image fails to load. Never shows a broken image.
  */
 export function BookCover({ book, size = "card" }: { book: StudentBook; size?: "card" | "hero" }) {
+  const a = useAppearance();
   const [failed, setFailed] = useState(false);
 
   // Reset the error state when the cover source changes so a valid cover on the
@@ -28,10 +30,13 @@ export function BookCover({ book, size = "card" }: { book: StudentBook; size?: "
   }
 
   return (
-    <div className={`book-cover ${size} fallback`} aria-label={book.title}>
+    <div
+      className={`book-cover ${size} fallback fallback-${a.studentFallbackCoverMode}`}
+      aria-label={book.title}
+    >
+      <span className="fc-mark" aria-hidden="true">📖</span>
       <span className="fc-category">{getBookCategoryName(book)}</span>
       <span className="fc-title">{book.title}</span>
-      <span className="fc-author">{getBookAuthorName(book)}</span>
     </div>
   );
 }
