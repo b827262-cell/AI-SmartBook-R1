@@ -12,6 +12,7 @@ import type {
   ChapterPreviewRow,
   GeneratePdfJsonIndexInput,
   PdfJsonIndex,
+  StoredJsonIndexSummary,
   CreateBookInput,
   UpdateBookInput
 } from "@ai-smartbook/schema";
@@ -104,6 +105,41 @@ export const adminApi = {
       `/api/admin/books/${bookId}/files/${fileId}/apply-chapters`,
       { method: "POST", body: JSON.stringify({ rows }) }
     ),
+
+  // ---- JSON index / QA reference -----------------------------------------
+  saveJsonIndex: (bookId: string, fileId: string, index: PdfJsonIndex, setActive = false) =>
+    http<{ index: StoredJsonIndexSummary }>(
+      `/api/admin/books/${bookId}/files/${fileId}/save-json-index`,
+      { method: "POST", body: JSON.stringify({ index, setActive }) }
+    ),
+
+  uploadJsonIndex: (bookId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return http<{ index: StoredJsonIndexSummary }>(
+      `/api/admin/books/${bookId}/json-indexes/upload`,
+      { method: "POST", body: form }
+    );
+  },
+
+  listJsonIndexes: (bookId: string) =>
+    http<{ indexes: StoredJsonIndexSummary[]; activeId: string | null }>(
+      `/api/admin/books/${bookId}/json-indexes`
+    ),
+
+  setActiveQaReference: (bookId: string, indexFileId: string) =>
+    http<{ activeId: string; index: StoredJsonIndexSummary }>(
+      `/api/admin/books/${bookId}/json-indexes/${indexFileId}/set-active-qa-reference`,
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  getJsonIndexRawUrl: (bookId: string, indexFileId: string) =>
+    `/api/admin/books/${bookId}/json-indexes/${indexFileId}/raw`,
+
+  deleteJsonIndex: (bookId: string, indexFileId: string) =>
+    http<{ deleted: boolean }>(`/api/admin/books/${bookId}/json-indexes/${indexFileId}`, {
+      method: "DELETE"
+    }),
 
   getBookFileUrl: (bookId: string, fileId: string) =>
     `/api/admin/books/${bookId}/files/${fileId}/raw`,

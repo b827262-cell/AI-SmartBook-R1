@@ -44,3 +44,31 @@ export const generatePdfJsonIndexInputSchema = z.object({
   level: pdfJsonIndexLevelSchema
 });
 export type GeneratePdfJsonIndexInput = z.infer<typeof generatePdfJsonIndexInputSchema>;
+
+/** Body for persisting a generated index as a managed QA-reference artifact. */
+export const saveJsonIndexInputSchema = z.object({
+  index: pdfJsonIndexSchema,
+  setActive: z.boolean().optional()
+});
+export type SaveJsonIndexInput = z.infer<typeof saveJsonIndexInputSchema>;
+
+/**
+ * Lightweight summary of a stored JSON index artifact (the header fields only,
+ * not the full item array) used by the admin list. `valid` is false when the
+ * stored file could not be parsed as a v1 index.
+ */
+export const storedJsonIndexSummarySchema = z.object({
+  fileId: z.string(),
+  fileName: z.string(),
+  fileSize: z.number().int().nonnegative(),
+  createdAt: z.string(),
+  isActive: z.boolean(),
+  valid: z.boolean(),
+  level: pdfJsonIndexLevelSchema.nullable(),
+  levelLabel: pdfJsonIndexLevelLabelSchema.nullable(),
+  itemCount: z.number().int().nonnegative().nullable(),
+  pageCount: z.number().int().nonnegative().nullable(),
+  generatedAt: z.string().nullable(),
+  sourceFileId: z.string().nullable()
+});
+export type StoredJsonIndexSummary = z.infer<typeof storedJsonIndexSummarySchema>;

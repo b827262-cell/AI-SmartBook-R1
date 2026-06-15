@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
@@ -31,12 +31,16 @@ import {
   setRiskLevelInputSchema,
   blockAccountInputSchema,
   generatePdfJsonIndexInputSchema,
+  saveJsonIndexInputSchema,
+  pdfJsonIndexSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
   type BookFile,
   type BookAiJob,
   type ChapterPreviewRow,
-  type ChatSession
+  type ChatSession,
+  type PdfJsonIndex,
+  type StoredJsonIndexSummary
 } from "@ai-smartbook/schema";
 
 const { db, sqlite } = getDb();
@@ -151,6 +155,105 @@ function deleteStoredBookFile(file: BookFile): void {
   repos.files.delete(file.id);
 }
 
+// ---- JSON index artifacts / QA reference ---------------------------------
+// Stored JSON indexes are managed `book_files` with role "json_index". The
+// active QA reference is a per-book pointer in app_settings (no migration).
+const JSON_INDEX_ROLE = "json_index" as const;
+const jsonUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+function qaReferenceKey(bookId: string): string {
+  return `qa_reference:${bookId}`;
+}
+function getActiveQaReferenceId(bookId: string): string | null {
+  return repos.settings.get(qaReferenceKey(bookId));
+}
+function setActiveQaReferenceId(bookId: string, fileId: string | null): void {
+  repos.settings.set(qaReferenceKey(bookId), fileId ?? "");
+}
+
+/** Persist an index JSON to the book's upload dir and return the file path. */
+function writeJsonIndexArtifact(bookId: string, baseName: string, json: PdfJsonIndex): string {
+  const dir = resolve(UPLOAD_ROOT, bookId);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const safe = sanitizeUploadFileName(baseName).replace(/\.json$/i, "");
+  const path = resolve(dir, `${Date.now()}_${safe || "index"}.json`);
+  writeFileSync(path, JSON.stringify(json, null, 2), "utf8");
+  return path;
+}
+
+/** Read + validate a stored JSON index file. Returns null when unparseable. */
+function readStoredJsonIndex(file: BookFile): PdfJsonIndex | null {
+  try {
+    const parsed = pdfJsonIndexSchema.safeParse(JSON.parse(readFileSync(file.filePath, "utf8")));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Build the lightweight admin-list summary for a stored JSON index file. */
+function summarizeStoredJsonIndex(file: BookFile, activeId: string | null): StoredJsonIndexSummary {
+  const index = readStoredJsonIndex(file);
+  return {
+    fileId: file.id,
+    fileName: file.fileName,
+    fileSize: file.fileSize,
+    createdAt: file.createdAt,
+    isActive: file.id === activeId,
+    valid: index != null,
+    level: index?.level ?? null,
+    levelLabel: index?.levelLabel ?? null,
+    itemCount: index?.itemCount ?? null,
+    pageCount: index?.pageCount ?? null,
+    generatedAt: index?.generatedAt ?? null,
+    sourceFileId: index?.fileId ?? file.relatedFileId ?? null
+  };
+}
+
+/**
+ * Keyword-search the active JSON index (if any) and return a QA answer built
+ * from its structured items. Returns null when there is no active index, it is
+ * unparseable, or nothing matches — letting the caller fall back to content QA.
+ */
+function answerFromActiveJsonIndex(
+  bookId: string,
+  question: string
+): { answer: string; matchedContentIds: string[] } | null {
+  const activeId = getActiveQaReferenceId(bookId);
+  if (!activeId) return null;
+  const file = repos.files.findById(activeId);
+  if (!file || file.bookId !== bookId || file.role !== JSON_INDEX_ROLE) return null;
+  const index = readStoredJsonIndex(file);
+  if (!index || index.items.length === 0) return null;
+
+  const tokens = tokenizeQuestion(question);
+  if (tokens.length === 0) return null;
+  const scored = index.items
+    .map((item) => {
+      const text = item.text.toLowerCase();
+      const score = tokens.reduce((acc, t) => acc + (text.includes(t) ? 1 : 0), 0);
+      return { item, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+  if (scored.length === 0) return null;
+
+  return {
+    answer: [
+      `根據結構化索引（${index.level} / ${index.levelLabel}）找到以下相關段落：`,
+      ...scored.map((s, i) => {
+        const range =
+          s.item.pageStart === s.item.pageEnd
+            ? `P${s.item.pageStart}`
+            : `P${s.item.pageStart}-${s.item.pageEnd}`;
+        return `${i + 1}. (${range}) ${s.item.text}`;
+      })
+    ].join("\n"),
+    matchedContentIds: []
+  };
+}
+
 async function replaceParsedContentsForFile(file: BookFile) {
   if (!isPdfBookFile(file)) {
     throw new Error("Only PDF source documents can be parsed.");
@@ -252,6 +355,11 @@ function findManualQaAnswer(bookId: string, question: string) {
 }
 
 function keywordChat(question: string, bookId: string, chapterId?: string | null) {
+  // Prefer the active structured JSON index as the QA reference; fall back to
+  // content-based search when there is no active index or it has no match.
+  const fromIndex = answerFromActiveJsonIndex(bookId, question);
+  if (fromIndex) return fromIndex;
+
   const tokens = tokenizeQuestion(question);
   const all = repos.contents.findByBookId(bookId);
   // Scope to the chapter's linked content when a chapter is selected and has
@@ -855,6 +963,135 @@ app.post("/api/admin/books/:bookId/files/:fileId/generate-json-index", async (re
     res.json({ index });
   } catch (err) {
     fail(res, 500, err instanceof Error ? err.message : "generate json index failed");
+  }
+});
+
+// Persist a generated index (posted in the body) as a managed json_index file.
+app.post("/api/admin/books/:bookId/files/:fileId/save-json-index", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const source = repos.files.findById(req.params.fileId);
+  if (!source || source.bookId !== book.id) return fail(res, 404, "file not found");
+
+  const parsed = saveJsonIndexInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  const index = parsed.data.index;
+  if (index.bookId !== book.id) return fail(res, 400, "JSON index bookId does not match this book");
+  if (index.fileId !== source.id) return fail(res, 400, "JSON index fileId does not match this PDF");
+
+  try {
+    const baseName = `${index.fileName.replace(/\.pdf$/i, "")}-${index.level}-index`;
+    const path = writeJsonIndexArtifact(book.id, baseName, index);
+    const record = repos.files.create({
+      bookId: book.id,
+      fileName: `${baseName}.json`,
+      filePath: path,
+      fileType: "application/json",
+      fileSize: Buffer.byteLength(JSON.stringify(index)),
+      role: JSON_INDEX_ROLE,
+      relatedFileId: source.id,
+      parseStatus: "parsed"
+    });
+    if (parsed.data.setActive) setActiveQaReferenceId(book.id, record.id);
+    res.status(201).json({ index: summarizeStoredJsonIndex(record, getActiveQaReferenceId(book.id)) });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "save json index failed");
+  }
+});
+
+// Manually upload a JSON index file (validated against the v1 schema).
+app.post("/api/admin/books/:bookId/json-indexes/upload", jsonUpload.single("file"), (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) return fail(res, 400, "file is required (multipart field 'file')");
+
+  let json: unknown;
+  try {
+    json = JSON.parse(file.buffer.toString("utf8"));
+  } catch {
+    return fail(res, 400, "Uploaded file is not valid JSON.");
+  }
+  const parsed = pdfJsonIndexSchema.safeParse(json);
+  if (!parsed.success) {
+    return fail(res, 400, `Invalid JSON index (smartbook-pdf-index-v1): ${parsed.error.message}`);
+  }
+  if (parsed.data.bookId !== book.id) {
+    return fail(
+      res,
+      400,
+      `This JSON index belongs to book ${parsed.data.bookId}, not the current book. Upload rejected.`
+    );
+  }
+
+  try {
+    const baseName = `${parsed.data.fileName.replace(/\.pdf$/i, "")}-${parsed.data.level}-index`;
+    const path = writeJsonIndexArtifact(book.id, baseName, parsed.data);
+    const record = repos.files.create({
+      bookId: book.id,
+      fileName: sanitizeUploadFileName(file.originalname) || `${baseName}.json`,
+      filePath: path,
+      fileType: "application/json",
+      fileSize: file.size,
+      role: JSON_INDEX_ROLE,
+      relatedFileId: null,
+      parseStatus: "parsed"
+    });
+    res.status(201).json({ index: summarizeStoredJsonIndex(record, getActiveQaReferenceId(book.id)) });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "upload json index failed");
+  }
+});
+
+// List stored JSON index artifacts for the book (newest first).
+app.get("/api/admin/books/:bookId/json-indexes", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const activeId = getActiveQaReferenceId(book.id);
+  const indexes = repos.files
+    .findByBookId(book.id)
+    .filter((f) => f.role === JSON_INDEX_ROLE)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((f) => summarizeStoredJsonIndex(f, activeId));
+  res.json({ indexes, activeId: activeId || null });
+});
+
+// Set a stored JSON index as the active Knowledge QA reference.
+app.post("/api/admin/books/:bookId/json-indexes/:indexFileId/set-active-qa-reference", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const file = repos.files.findById(req.params.indexFileId);
+  if (!file || file.bookId !== book.id || file.role !== JSON_INDEX_ROLE) {
+    return fail(res, 404, "JSON index not found");
+  }
+  setActiveQaReferenceId(book.id, file.id);
+  res.json({ activeId: file.id, index: summarizeStoredJsonIndex(file, file.id) });
+});
+
+// Stream a stored JSON index file (View / Download).
+app.get("/api/admin/books/:bookId/json-indexes/:indexFileId/raw", (req, res) => {
+  const file = repos.files.findById(req.params.indexFileId);
+  if (!file || file.bookId !== req.params.bookId || file.role !== JSON_INDEX_ROLE) {
+    return fail(res, 404, "JSON index not found");
+  }
+  res.type("application/json").sendFile(file.filePath);
+});
+
+// Delete a stored JSON index artifact (never touches the source PDF).
+app.delete("/api/admin/books/:bookId/json-indexes/:indexFileId", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const file = repos.files.findById(req.params.indexFileId);
+  if (!file || file.bookId !== book.id || file.role !== JSON_INDEX_ROLE) {
+    return fail(res, 404, "JSON index not found");
+  }
+  try {
+    deleteStoredBookFile(file);
+    // Clearing the active reference falls QA back to content-based behavior.
+    if (getActiveQaReferenceId(book.id) === file.id) setActiveQaReferenceId(book.id, null);
+    res.json({ deleted: true });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "delete json index failed");
   }
 });
 

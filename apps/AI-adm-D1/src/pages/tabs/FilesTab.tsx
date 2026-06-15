@@ -5,7 +5,8 @@ import type {
   ChapterPreviewEntryType,
   ChapterPreviewRow,
   PdfJsonIndex,
-  PdfJsonIndexLevel
+  PdfJsonIndexLevel,
+  StoredJsonIndexSummary
 } from "@ai-smartbook/schema";
 import { adminApi } from "../../api";
 
@@ -73,13 +74,19 @@ export function FilesTab({ bookId }: { bookId: string }) {
   const [previewPageCount, setPreviewPageCount] = useState(0);
   const [jsonLevels, setJsonLevels] = useState<Record<string, PdfJsonIndexLevel>>({});
   const [generatedIndex, setGeneratedIndex] = useState<PdfJsonIndex | null>(null);
+  const [jsonIndexes, setJsonIndexes] = useState<StoredJsonIndexSummary[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const jsonUploadRef = useRef<HTMLInputElement>(null);
   const previewSectionRef = useRef<HTMLDivElement>(null);
   const jsonResultRef = useRef<HTMLDivElement>(null);
 
   async function reload() {
-    const data = await adminApi.getBook(bookId);
+    const [data, idx] = await Promise.all([
+      adminApi.getBook(bookId),
+      adminApi.listJsonIndexes(bookId)
+    ]);
     setFiles(data.files);
+    setJsonIndexes(idx.indexes);
   }
 
   useEffect(() => {
@@ -87,6 +94,9 @@ export function FilesTab({ bookId }: { bookId: string }) {
   }, [bookId]);
 
   const previewFile = previewFileId ? files.find((file) => file.id === previewFileId) ?? null : null;
+  // The main table lists PDF sources / reference images; stored JSON indexes are
+  // managed in their own "JSON Index / QA Reference" section below.
+  const documentFiles = files.filter((file) => file.role !== "json_index");
   const generatedJsonText = useMemo(
     () => (generatedIndex ? JSON.stringify(generatedIndex, null, 2) : ""),
     [generatedIndex]
@@ -199,6 +209,55 @@ export function FilesTab({ bookId }: { bookId: string }) {
     URL.revokeObjectURL(url);
   }
 
+  // ---- JSON index / QA reference management --------------------------------
+  async function onSaveAsQaReference() {
+    if (!generatedIndex) return;
+    await run(async () => {
+      const result = await adminApi.saveJsonIndex(bookId, generatedIndex.fileId, generatedIndex, true);
+      setMsg(`Saved JSON index as active QA reference: ${result.index.fileName}`);
+      await reload();
+    });
+  }
+
+  async function onUploadJsonIndex() {
+    const file = jsonUploadRef.current?.files?.[0];
+    if (!file) return;
+    await run(async () => {
+      const result = await adminApi.uploadJsonIndex(bookId, file);
+      setMsg(`Uploaded JSON index: ${result.index.fileName}`);
+      if (jsonUploadRef.current) jsonUploadRef.current.value = "";
+      await reload();
+    });
+  }
+
+  async function onSetActiveJsonIndex(indexFileId: string) {
+    await run(async () => {
+      await adminApi.setActiveQaReference(bookId, indexFileId);
+      setMsg("Active QA reference updated.");
+      await reload();
+    });
+  }
+
+  function onViewJsonIndex(indexFileId: string) {
+    window.open(adminApi.getJsonIndexRawUrl(bookId, indexFileId), "_blank", "noopener,noreferrer");
+  }
+
+  function onDownloadJsonIndex(indexFileId: string, fileName: string) {
+    const link = document.createElement("a");
+    link.href = adminApi.getJsonIndexRawUrl(bookId, indexFileId);
+    link.download = fileName;
+    link.click();
+  }
+
+  async function onDeleteJsonIndex(indexFileId: string, fileName: string) {
+    if (!window.confirm(`Delete JSON index "${fileName}"? The source PDF is not affected.`)) return;
+    await run(async () => {
+      await adminApi.deleteJsonIndex(bookId, indexFileId);
+      setMsg(`Deleted JSON index: ${fileName}`);
+      await reload();
+    });
+  }
+
   function updateRow(index: number, next: ChapterPreviewRow) {
     setPreviewRows((current) =>
       current.map((row, rowIndex) => (rowIndex === index ? withApplyStatus(next) : row))
@@ -278,7 +337,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Files</h3>
-        {files.length === 0 ? (
+        {documentFiles.length === 0 ? (
           <p className="muted">No files uploaded yet.</p>
         ) : (
           <div className="admin-table-wrap">
@@ -294,7 +353,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {files.map((file) => {
+                {documentFiles.map((file) => {
                   const rowKind = getFileRowKind(file);
                   const relatedPdf =
                     file.relatedFileId != null
@@ -609,13 +668,18 @@ export function FilesTab({ bookId }: { bookId: string }) {
                 <strong>{generatedIndex.itemCount}</strong>
               </p>
             </div>
-            <button
-              className="btn secondary"
-              onClick={() => onDownloadJsonResult(generatedIndex.fileId)}
-              disabled={busy}
-            >
-              Download JSON
-            </button>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn" onClick={() => void onSaveAsQaReference()} disabled={busy}>
+                Save as QA Reference
+              </button>
+              <button
+                className="btn secondary"
+                onClick={() => onDownloadJsonResult(generatedIndex.fileId)}
+                disabled={busy}
+              >
+                Download JSON
+              </button>
+            </div>
           </div>
 
           {generatedIndex.notes?.length ? (
@@ -634,6 +698,103 @@ export function FilesTab({ bookId }: { bookId: string }) {
           </details>
         </div>
       ) : null}
+
+      <div className="card">
+        <div className="row between" style={{ alignItems: "flex-start" }}>
+          <div>
+            <h3 style={{ marginTop: 0, marginBottom: 6 }}>JSON Index / QA Reference</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              Stored JSON indexes persist across refreshes. The active one is used as the Knowledge QA
+              structured reference; with none active, QA falls back to content-based search.
+            </p>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              ref={jsonUploadRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ maxWidth: 280 }}
+            />
+            <button className="btn secondary" onClick={() => void onUploadJsonIndex()} disabled={busy}>
+              Upload JSON
+            </button>
+          </div>
+        </div>
+
+        {jsonIndexes.length === 0 ? (
+          <p className="muted" style={{ marginTop: 12 }}>
+            No stored JSON index yet. Generate an index above and click “Save as QA Reference”, or
+            upload a JSON index file.
+          </p>
+        ) : (
+          <div className="admin-table-wrap" style={{ marginTop: 12 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>File name</th>
+                  <th>Level / Label</th>
+                  <th>Items</th>
+                  <th>Created</th>
+                  <th>QA Reference</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jsonIndexes.map((idx) => (
+                  <tr key={idx.fileId}>
+                    <td>
+                      <div>{idx.fileName}</div>
+                      {!idx.valid ? (
+                        <span className="badge failed">invalid / unreadable</span>
+                      ) : null}
+                    </td>
+                    <td>
+                      {idx.level ?? "—"}
+                      {idx.levelLabel ? ` / ${idx.levelLabel}` : ""}
+                    </td>
+                    <td>{idx.itemCount ?? "—"}</td>
+                    <td className="muted">{new Date(idx.createdAt).toLocaleString("zh-Hant")}</td>
+                    <td>
+                      {idx.isActive ? (
+                        <span className="badge parsed">Active QA Reference</span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          className="btn secondary"
+                          onClick={() => void onSetActiveJsonIndex(idx.fileId)}
+                          disabled={busy || idx.isActive || !idx.valid}
+                        >
+                          Set as QA Reference
+                        </button>
+                        <button className="btn secondary" onClick={() => onViewJsonIndex(idx.fileId)}>
+                          View JSON
+                        </button>
+                        <button
+                          className="btn secondary"
+                          onClick={() => onDownloadJsonIndex(idx.fileId, idx.fileName)}
+                        >
+                          Download JSON
+                        </button>
+                        <button
+                          className="btn secondary"
+                          onClick={() => void onDeleteJsonIndex(idx.fileId, idx.fileName)}
+                          disabled={busy}
+                        >
+                          Delete JSON
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
