@@ -8,6 +8,8 @@ import type {
 
 export interface BookDetail extends Book {
   chapters: BookChapter[];
+  pdfFileId?: string | null;
+  pdfFileName?: string | null;
 }
 
 export interface ChatResponse {
@@ -33,6 +35,18 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function fetchPdfBlob(path: string, sessionId: string): Promise<Blob> {
+  const res = await fetch(path, {
+    headers: { "X-Student-Session-Id": sessionId },
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error || `${res.status} ${res.statusText}`);
+  }
+  return await res.blob();
+}
+
 /**
  * Student-facing API client. It only talks to /api/student/* — it never stores
  * an API key and never calls an AI SDK directly.
@@ -44,6 +58,15 @@ export const studentClient = {
 
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/student/books/${bookId}/contents`),
+
+  ensureBookSession: (bookId: string, sessionId?: string | null) =>
+    http<{ sessionId: string }>(`/api/student/books/${bookId}/session`, {
+      method: "POST",
+      body: JSON.stringify(sessionId ? { sessionId } : {})
+    }),
+
+  getProtectedPdfBlob: (bookId: string, fileId: string, sessionId: string) =>
+    fetchPdfBlob(`/api/student/books/${bookId}/files/${fileId}/pdf-view`, sessionId),
 
   sendBookChat: (
     bookId: string,

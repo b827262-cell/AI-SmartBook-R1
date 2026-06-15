@@ -496,6 +496,76 @@ a { color: var(--primary); text-decoration: none; }
 .reader-workbench { max-width: 1280px; margin: 0 auto; }
 .reader-state { padding: 40px 0; }
 
+.student-pdf-card {
+  margin-bottom: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(20, 34, 53, 0.06);
+  padding: 16px;
+}
+.student-pdf-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.student-pdf-head h3 { margin: 0 0 6px; font-size: 18px; }
+.student-pdf-head p { margin: 0; max-width: 720px; }
+.student-pdf-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.student-pdf-meta strong {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.student-pdf-frame {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f3f8ff;
+  min-height: 640px;
+}
+.student-pdf-iframe {
+  display: block;
+  width: 100%;
+  height: 72vh;
+  min-height: 640px;
+  border: none;
+  background: #fff;
+}
+.student-pdf-watermark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: center;
+  justify-items: center;
+  gap: 56px 24px;
+  padding: 24px;
+  pointer-events: none;
+  opacity: 0.13;
+}
+.student-pdf-watermark-item {
+  transform: rotate(-24deg);
+  color: #0f4da1;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* Top bar */
 .reader-topbar {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px;
@@ -610,4 +680,9 @@ a { color: var(--primary); text-decoration: none; }
   .reader-chat-col .chat-wrap { height: 460px; }
   .reader-topbar { grid-template-columns: auto 1fr auto; }
   .reader-mini-meta strong { max-width: 160px; }
+  .student-pdf-iframe { min-height: 480px; height: 60vh; }
+  .student-pdf-watermark {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
 }

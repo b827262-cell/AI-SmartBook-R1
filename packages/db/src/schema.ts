@@ -90,6 +90,16 @@ export const chatMessages = sqliteTable("chat_messages", {
   createdAt: text("created_at").notNull()
 });
 
+export const pdfAccessLogs = sqliteTable("pdf_access_logs", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull(),
+  fileId: text("file_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  viewedAt: text("viewed_at").notNull()
+});
+
 export const bookAiJobs = sqliteTable("book_ai_jobs", {
   id: text("id").primaryKey(),
   bookId: text("book_id").notNull(),
@@ -127,6 +137,7 @@ export type DbSchema = {
   bookChapters: typeof bookChapters;
   chatSessions: typeof chatSessions;
   chatMessages: typeof chatMessages;
+  pdfAccessLogs: typeof pdfAccessLogs;
   bookAiJobs: typeof bookAiJobs;
   bookQaLogs: typeof bookQaLogs;
   appSettings: typeof appSettings;
@@ -139,6 +150,7 @@ export const schema = {
   bookChapters,
   chatSessions,
   chatMessages,
+  pdfAccessLogs,
   bookAiJobs,
   bookQaLogs,
   appSettings

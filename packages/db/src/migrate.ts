@@ -83,6 +83,15 @@ const STATEMENTS = [
     content TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS pdf_access_logs (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    file_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    viewed_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS book_ai_jobs (
     id TEXT PRIMARY KEY,
     book_id TEXT NOT NULL,
@@ -115,6 +124,8 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_book_contents_chapter ON book_contents(chapter_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_chapters_book ON book_chapters(book_id)`,
   `CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_pdf_access_logs_book ON pdf_access_logs(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_pdf_access_logs_session ON pdf_access_logs(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_ai_jobs_book ON book_ai_jobs(book_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_qa_logs_book ON book_qa_logs(book_id)`
 ];

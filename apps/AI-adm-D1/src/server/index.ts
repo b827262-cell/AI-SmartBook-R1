@@ -514,6 +514,62 @@ function findPublishedBook(bookId: string) {
   return book;
 }
 
+function findPrimaryPdfSourceFile(bookId: string): BookFile | null {
+  return (
+    repos.files
+      .findByBookId(bookId)
+      .find((file) => file.role === "source_document" && isPdfBookFile(file)) ?? null
+  );
+}
+
+function resolveStudentSessionId(req: Request): string | null {
+  const fromHeader = headerValue(req, "x-student-session-id").trim();
+  if (fromHeader) return fromHeader;
+  const fromQuery = typeof req.query.sessionId === "string" ? req.query.sessionId.trim() : "";
+  return fromQuery || null;
+}
+
+function resolveStudentSession(
+  req: Request,
+  res: Response,
+  bookId: string,
+  options: { allowCreate: boolean; title?: string; sessionIdOverride?: string | null }
+): { session: ChatSession; clientInfo: ClientInfo } | null {
+  const sessionId = options.sessionIdOverride?.trim() || resolveStudentSessionId(req);
+  const existingSession = sessionId ? repos.chat.findSessionById(sessionId) : null;
+
+  if (sessionId && !existingSession) {
+    fail(res, 401, "invalid session");
+    return null;
+  }
+  if (existingSession && existingSession.bookId !== bookId) {
+    fail(res, 403, "session is not allowed to access this book");
+    return null;
+  }
+  if (rejectIfBlocked(req, res, existingSession)) return null;
+
+  const clientInfo = parseClientInfo(req);
+  if (!existingSession) {
+    if (!options.allowCreate) {
+      fail(res, 401, "student session is required");
+      return null;
+    }
+    const created = repos.chat.createSession({
+      bookId,
+      title: options.title ?? "Reader session",
+      ...enrichSessionClientInfo(null, clientInfo)
+    });
+    return { session: created, clientInfo };
+  }
+
+  const updated =
+    repos.chat.updateSessionClientInfo(
+      existingSession.id,
+      enrichSessionClientInfo(existingSession, clientInfo)
+    ) ?? existingSession;
+  return { session: updated, clientInfo };
+}
+
 interface ManualQaItem {
   question: string;
   answer: string;
@@ -1031,13 +1087,69 @@ app.get("/api/student/books/:bookId", (req, res) => {
   const book = findPublishedBook(String(req.params.bookId));
   if (!book) return fail(res, 404, "book not found");
   const chapters = repos.chapters.findByBookId(book.id);
-  res.json({ book: { ...book, chapters } });
+  const pdfFile = findPrimaryPdfSourceFile(book.id);
+  res.json({
+    book: {
+      ...book,
+      chapters,
+      pdfFileId: pdfFile?.id ?? null,
+      pdfFileName: pdfFile?.fileName ?? null
+    }
+  });
 });
 
 app.get("/api/student/books/:bookId/contents", (req, res) => {
   const book = findPublishedBook(String(req.params.bookId));
   if (!book) return fail(res, 404, "book not found");
   res.json({ contents: repos.contents.findByBookId(book.id) });
+});
+
+app.post("/api/student/books/:bookId/session", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+
+  const resolved = resolveStudentSession(req, res, book.id, {
+    allowCreate: true,
+    title: `Reader session · ${book.title}`,
+    sessionIdOverride:
+      typeof req.body?.sessionId === "string" && req.body.sessionId.trim() !== ""
+        ? req.body.sessionId.trim()
+        : null
+  });
+  if (!resolved) return;
+
+  res.json({ sessionId: resolved.session.id });
+});
+
+app.get("/api/student/books/:bookId/files/:fileId/pdf-view", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+
+  const resolved = resolveStudentSession(req, res, book.id, { allowCreate: false });
+  if (!resolved) return;
+
+  const file = repos.files.findById(String(req.params.fileId));
+  if (!file || file.bookId !== book.id) return fail(res, 404, "file not found");
+  if (file.role !== "source_document" || !isPdfBookFile(file)) {
+    return fail(res, 400, "file is not a PDF source document");
+  }
+  if (!existsSync(file.filePath)) return fail(res, 404, "file not found");
+
+  repos.pdfAccessLogs.create({
+    bookId: book.id,
+    fileId: file.id,
+    sessionId: resolved.session.id,
+    ipAddress: resolved.clientInfo.ipAddress ?? null,
+    userAgent: resolved.clientInfo.userAgent ?? null
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", 'inline; filename="reader.pdf"');
+  res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.sendFile(file.filePath);
 });
 
 const BLOCKED_MESSAGE = "This account/session has been blocked by the administrator.";

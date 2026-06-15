@@ -6,6 +6,7 @@ import { makeChapterRepo } from "./chapter.repo";
 import { makeChatRepo } from "./chat.repo";
 import { makeAiJobRepo } from "./aiJob.repo";
 import { makeQaLogRepo } from "./qaLog.repo";
+import { makePdfAccessLogRepo } from "./pdfAccessLog.repo";
 import { makeSettingsRepo } from "./settings.repo";
 
 export * from "./book.repo";
@@ -15,6 +16,7 @@ export * from "./chapter.repo";
 export * from "./chat.repo";
 export * from "./aiJob.repo";
 export * from "./qaLog.repo";
+export * from "./pdfAccessLog.repo";
 export * from "./settings.repo";
 
 export interface Repositories {
@@ -25,6 +27,7 @@ export interface Repositories {
   chat: ReturnType<typeof makeChatRepo>;
   aiJobs: ReturnType<typeof makeAiJobRepo>;
   qaLogs: ReturnType<typeof makeQaLogRepo>;
+  pdfAccessLogs: ReturnType<typeof makePdfAccessLogRepo>;
   settings: ReturnType<typeof makeSettingsRepo>;
 }
 
@@ -38,6 +41,7 @@ export function createRepositories(db: Db): Repositories {
     chat: makeChatRepo(db),
     aiJobs: makeAiJobRepo(db),
     qaLogs: makeQaLogRepo(db),
+    pdfAccessLogs: makePdfAccessLogRepo(db),
     settings: makeSettingsRepo(db)
   };
 }
