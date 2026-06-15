@@ -1,10 +1,11 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type {
   ChatMessage,
   ChatRole,
   ChatSession,
   CreateChatMessageInput,
-  CreateChatSessionInput
+  CreateChatSessionInput,
+  RiskLevel
 } from "@ai-smartbook/schema";
 import type { Db } from "../client";
 import { chatMessages, chatSessions } from "../schema";
@@ -28,6 +29,11 @@ type SessionClientInfo = Pick<
   | "deviceType"
   | "deviceVendor"
   | "deviceModel"
+  | "lastIpAddress"
+  | "lastIpCountry"
+  | "lastIpRegion"
+  | "lastIpCity"
+  | "lastIpSource"
 >;
 
 export function makeChatRepo(db: Db) {
@@ -47,7 +53,18 @@ export function makeChatRepo(db: Db) {
         browserVersion: input.browserVersion ?? null,
         deviceType: input.deviceType ?? null,
         deviceVendor: input.deviceVendor ?? null,
-        deviceModel: input.deviceModel ?? null
+        deviceModel: input.deviceModel ?? null,
+        lastIpAddress: input.lastIpAddress ?? null,
+        lastIpCountry: input.lastIpCountry ?? null,
+        lastIpRegion: input.lastIpRegion ?? null,
+        lastIpCity: input.lastIpCity ?? null,
+        lastIpSource: input.lastIpSource ?? null,
+        // New sessions start as unmarked and unblocked.
+        riskLevel: "safe",
+        isBlocked: false,
+        blockedAt: null,
+        blockedReason: null,
+        riskNote: null
       };
       db.insert(chatSessions).values(row).run();
       return row;
@@ -95,9 +112,48 @@ export function makeChatRepo(db: Db) {
       if (input.deviceType !== undefined) patch.deviceType = input.deviceType ?? null;
       if (input.deviceVendor !== undefined) patch.deviceVendor = input.deviceVendor ?? null;
       if (input.deviceModel !== undefined) patch.deviceModel = input.deviceModel ?? null;
+      if (input.lastIpAddress !== undefined) patch.lastIpAddress = input.lastIpAddress ?? null;
+      if (input.lastIpCountry !== undefined) patch.lastIpCountry = input.lastIpCountry ?? null;
+      if (input.lastIpRegion !== undefined) patch.lastIpRegion = input.lastIpRegion ?? null;
+      if (input.lastIpCity !== undefined) patch.lastIpCity = input.lastIpCity ?? null;
+      if (input.lastIpSource !== undefined) patch.lastIpSource = input.lastIpSource ?? null;
       if (Object.keys(patch).length === 0) return this.findSessionById(id);
       db.update(chatSessions).set(patch).where(eq(chatSessions.id, id)).run();
       return this.findSessionById(id);
+    },
+
+    /** Admin: set the risk marking (safe/risk/dangerous) and optional note. */
+    setRiskLevel(id: string, riskLevel: RiskLevel, note?: string | null): ChatSession | null {
+      const patch: Partial<SessionRow> = { riskLevel };
+      if (note !== undefined) patch.riskNote = note ?? null;
+      db.update(chatSessions).set(patch).where(eq(chatSessions.id, id)).run();
+      return this.findSessionById(id);
+    },
+
+    /** Admin: block or unblock a session, recording the time/reason on block. */
+    setBlocked(id: string, blocked: boolean, reason?: string | null): ChatSession | null {
+      const patch: Partial<SessionRow> = {
+        isBlocked: blocked,
+        blockedAt: blocked ? nowIso() : null,
+        blockedReason: blocked ? reason ?? null : null
+      };
+      db.update(chatSessions).set(patch).where(eq(chatSessions.id, id)).run();
+      return this.findSessionById(id);
+    },
+
+    /**
+     * True when any session sharing this exact (public) IP is blocked. Used to
+     * enforce blocks against anonymous visitors who have no persistent identity.
+     * Callers must not pass private/local IPs (would block all localhost dev).
+     */
+    isIpBlocked(ip: string): boolean {
+      if (!ip) return false;
+      const hit = db
+        .select({ id: chatSessions.id })
+        .from(chatSessions)
+        .where(and(eq(chatSessions.lastIpAddress, ip), eq(chatSessions.isBlocked, true)))
+        .get();
+      return !!hit;
     },
 
     /** All chat messages across sessions (admin dashboard aggregates). */

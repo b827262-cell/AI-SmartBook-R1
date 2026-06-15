@@ -64,7 +64,20 @@ export const chatSessions = sqliteTable("chat_sessions", {
   browserVersion: text("browser_version"),
   deviceType: text("device_type"),
   deviceVendor: text("device_vendor"),
-  deviceModel: text("device_model")
+  deviceModel: text("device_model"),
+  // Last login / activity IP captured server-side (never trusted from client).
+  lastIpAddress: text("last_ip_address"),
+  lastIpCountry: text("last_ip_country"),
+  lastIpRegion: text("last_ip_region"),
+  lastIpCity: text("last_ip_city"),
+  // How the IP was resolved (e.g. cf-connecting-ip / x-forwarded-for / socket).
+  lastIpSource: text("last_ip_source"),
+  // Admin security controls: risk marking and block state.
+  riskLevel: text("risk_level").notNull().default("safe"),
+  isBlocked: integer("is_blocked", { mode: "boolean" }).notNull().default(false),
+  blockedAt: text("blocked_at"),
+  blockedReason: text("blocked_reason"),
+  riskNote: text("risk_note")
 });
 
 export const chatMessages = sqliteTable("chat_messages", {

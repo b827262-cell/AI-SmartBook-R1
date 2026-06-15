@@ -23,6 +23,8 @@ import {
   studentChatRequestSchema,
   appearanceSettingsSchema,
   appearanceSettingsUpdateSchema,
+  setRiskLevelInputSchema,
+  blockAccountInputSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
   type BookAiJob,
@@ -236,11 +238,74 @@ type ClientInfo = {
   deviceType: string;
   deviceVendor: string | null;
   deviceModel: string | null;
+  ipAddress: string | null;
+  ipSource: string | null;
 };
 
 function headerValue(req: Request, name: string): string {
   const value = req.headers[name];
   return Array.isArray(value) ? value.join(", ") : typeof value === "string" ? value : "";
+}
+
+// ---- Server-side IP resolution -------------------------------------------
+// We never trust a client-supplied IP. When TRUST_PROXY=true (e.g. behind
+// Nginx / Cloudflare) we honour the standard forwarding headers in a fixed
+// priority order; otherwise we only trust the raw socket address.
+const TRUST_PROXY = String(process.env.TRUST_PROXY).toLowerCase() === "true";
+
+/** Normalize IPv6 localhost and IPv4-mapped IPv6 to their IPv4 form. */
+function normalizeIp(raw: string): string {
+  let ip = raw.trim();
+  if (ip === "") return "";
+  if (ip === "::1") return "127.0.0.1";
+  // Strip an IPv4-mapped IPv6 prefix, e.g. ::ffff:127.0.0.1 -> 127.0.0.1.
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (mapped) ip = mapped[1];
+  return ip;
+}
+
+/** Resolve the client IP and record which source it came from. */
+function resolveClientIp(req: Request): { ip: string | null; source: string | null } {
+  if (TRUST_PROXY) {
+    const cf = headerValue(req, "cf-connecting-ip").trim();
+    if (cf) return { ip: normalizeIp(cf), source: "cf-connecting-ip" };
+    const xff = headerValue(req, "x-forwarded-for").split(",")[0]?.trim();
+    if (xff) return { ip: normalizeIp(xff), source: "x-forwarded-for" };
+    const xreal = headerValue(req, "x-real-ip").trim();
+    if (xreal) return { ip: normalizeIp(xreal), source: "x-real-ip" };
+  }
+  const socket = req.socket?.remoteAddress ?? "";
+  const ip = normalizeIp(socket);
+  return { ip: ip || null, source: ip ? "socket" : null };
+}
+
+/** Private/loopback/link-local IPv4 or IPv6 — never sent to external geo. */
+function isPrivateIp(ip: string | null): boolean {
+  if (!ip) return true;
+  if (ip === "127.0.0.1" || ip.startsWith("127.")) return true;
+  if (ip === "::1" || ip === "0.0.0.0" || ip === "::") return true;
+  if (/^10\./.test(ip)) return true;
+  if (/^192\.168\./.test(ip)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  if (/^169\.254\./.test(ip)) return true; // link-local
+  if (/^(fc|fd)[0-9a-f]{2}:/i.test(ip)) return true; // IPv6 ULA
+  if (/^fe80:/i.test(ip)) return true; // IPv6 link-local
+  return false;
+}
+
+/**
+ * Human-readable location label for the admin table. We do not call any paid
+ * external geolocation service: private/local IPs show a fixed label and public
+ * IPs show stored geo fields when present, otherwise "Unknown".
+ */
+function describeIpLocation(session: ChatSession): string {
+  const ip = session.lastIpAddress ?? null;
+  if (!ip) return "—";
+  if (isPrivateIp(ip)) return "Localhost / Private IP";
+  const parts = [session.lastIpCity, session.lastIpRegion, session.lastIpCountry]
+    .map((p) => (p ?? "").trim())
+    .filter((p) => p.length > 0);
+  return parts.length > 0 ? parts.join(", ") : "Unknown";
 }
 
 function normalizeOs(rawPlatform: string, userAgent: string) {
@@ -343,6 +408,7 @@ function parseClientInfo(req: Request): ClientInfo {
   const browser = normalizeBrowser(secChUa, userAgent);
   const deviceType = normalizeDeviceType(secChUaMobile, userAgent, os.name);
   const device = detectDeviceModel(userAgent, os.name);
+  const resolvedIp = resolveClientIp(req);
 
   return {
     userAgent: userAgent || null,
@@ -352,7 +418,9 @@ function parseClientInfo(req: Request): ClientInfo {
     osVersion: os.version,
     deviceType,
     deviceVendor: device.vendor,
-    deviceModel: device.model
+    deviceModel: device.model,
+    ipAddress: resolvedIp.ip,
+    ipSource: resolvedIp.source
   };
 }
 
@@ -368,7 +436,14 @@ function enrichSessionClientInfo(existing: ChatSession | null, next: ClientInfo)
     browserVersion: keep(existing?.browserVersion, next.browserVersion),
     deviceType: keep(existing?.deviceType, next.deviceType) ?? "未知",
     deviceVendor: keep(existing?.deviceVendor, next.deviceVendor),
-    deviceModel: keep(existing?.deviceModel, next.deviceModel)
+    deviceModel: keep(existing?.deviceModel, next.deviceModel),
+    // Always refresh the IP to the latest request; keep prior geo (we do not
+    // resolve geo yet, so these stay null unless a GeoIP provider is added).
+    lastIpAddress: next.ipAddress ?? existing?.lastIpAddress ?? null,
+    lastIpCountry: existing?.lastIpCountry ?? null,
+    lastIpRegion: existing?.lastIpRegion ?? null,
+    lastIpCity: existing?.lastIpCity ?? null,
+    lastIpSource: next.ipSource ?? existing?.lastIpSource ?? null
   };
 }
 
@@ -776,6 +851,28 @@ app.get("/api/student/books/:bookId/contents", (req, res) => {
   res.json({ contents: repos.contents.findByBookId(book.id) });
 });
 
+const BLOCKED_MESSAGE = "This account/session has been blocked by the administrator.";
+
+/**
+ * Reject (HTTP 403) a student request that must be blocked: either the referenced
+ * session is explicitly blocked, or the resolved public IP matches a blocked
+ * session. Private/local IPs are never IP-matched (that would block all
+ * localhost dev), so for those only the explicit session block applies.
+ * Returns true when a response was already sent.
+ */
+function rejectIfBlocked(req: Request, res: Response, session: ChatSession | null): boolean {
+  if (session?.isBlocked) {
+    fail(res, 403, BLOCKED_MESSAGE);
+    return true;
+  }
+  const { ip } = resolveClientIp(req);
+  if (ip && !isPrivateIp(ip) && repos.chat.isIpBlocked(ip)) {
+    fail(res, 403, BLOCKED_MESSAGE);
+    return true;
+  }
+  return false;
+}
+
 app.post("/api/student/books/:bookId/chat", (req, res) => {
   const book = findPublishedBook(String(req.params.bookId));
   if (!book) return fail(res, 404, "book not found");
@@ -788,8 +885,14 @@ app.post("/api/student/books/:bookId/chat", (req, res) => {
   // Resolve or create a chat session bound to this book.
   let sessionId = parsed.data.sessionId;
   const requestClientInfo = parseClientInfo(req);
+
+  // Enforce admin blocks before doing any work: reject a blocked session, or a
+  // brand-new session opened from an already-blocked public IP.
+  const existingSession = sessionId ? repos.chat.findSessionById(sessionId) : null;
+  if (rejectIfBlocked(req, res, existingSession)) return;
+
   if (sessionId) {
-    const session = repos.chat.findSessionById(sessionId);
+    const session = existingSession;
     if (!session || session.bookId !== book.id) {
       sessionId = undefined;
     } else {
@@ -862,6 +965,7 @@ app.get("/api/student/books/:bookId/chat-sessions/:sessionId", (req, res) => {
   const session = repos.chat.findSessionById(String(req.params.sessionId));
   // Only expose sessions that belong to this published book.
   if (!session || session.bookId !== book.id) return fail(res, 404, "session not found");
+  if (rejectIfBlocked(req, res, session)) return;
   repos.chat.updateSessionClientInfo(session.id, enrichSessionClientInfo(session, parseClientInfo(req)));
   res.json({ sessionId: session.id, messages: repos.chat.findMessages(session.id) });
 });
@@ -947,11 +1051,20 @@ app.get("/api/admin/accounts", (_req, res) => {
       const last = sessionLastActivityMs(s, lastSeen);
       return {
         id: s.userId || s.id,
+        // Admin management actions always target the session row id.
+        sessionId: s.id,
         name: s.title?.trim() || "匿名訪客",
         loginMethod: s.userId ? "帳號登入" : "匿名進入",
         osName: s.osName || "未知",
         deviceType: s.deviceType || "未知",
         browserName: s.browserName || "未知",
+        ipAddress: s.lastIpAddress ?? null,
+        ipLocation: describeIpLocation(s),
+        riskLevel: (s.riskLevel as "safe" | "risk" | "dangerous") || "safe",
+        riskNote: s.riskNote ?? null,
+        isBlocked: !!s.isBlocked,
+        blockedReason: s.blockedReason ?? null,
+        blockedAt: s.blockedAt ?? null,
         lastSeenAt: new Date(last).toISOString(),
         online: now - last <= ONLINE_WINDOW_MS
       };
@@ -959,6 +1072,27 @@ app.get("/api/admin/accounts", (_req, res) => {
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
 
   res.json({ accounts });
+});
+
+// Admin-only: set the risk marking (safe / risk / dangerous) for a session.
+app.patch("/api/admin/accounts/:sessionId/risk", (req, res) => {
+  const parsed = setRiskLevelInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  const session = repos.chat.findSessionById(String(req.params.sessionId));
+  if (!session) return fail(res, 404, "account not found");
+  const updated = repos.chat.setRiskLevel(session.id, parsed.data.riskLevel, parsed.data.note ?? null);
+  res.json({ account: updated });
+});
+
+// Admin-only: block / unblock a session. A blocked session (and any other
+// session sharing its public IP) is rejected by the student-facing endpoints.
+app.patch("/api/admin/accounts/:sessionId/block", (req, res) => {
+  const parsed = blockAccountInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  const session = repos.chat.findSessionById(String(req.params.sessionId));
+  if (!session) return fail(res, 404, "account not found");
+  const updated = repos.chat.setBlocked(session.id, parsed.data.blocked, parsed.data.reason ?? null);
+  res.json({ account: updated });
 });
 
 app.get("/api/admin/student-questions", (_req, res) => {

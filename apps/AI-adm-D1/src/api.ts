@@ -146,6 +146,24 @@ export const adminApi = {
 
   listAccounts: () => http<{ accounts: AdminAccount[] }>("/api/admin/accounts"),
 
+  setAccountRisk: (sessionId: string, riskLevel: RiskLevel, note?: string | null) =>
+    http<{ account: AdminAccount | null }>(`/api/admin/accounts/${sessionId}/risk`, {
+      method: "PATCH",
+      body: JSON.stringify({ riskLevel, note: note ?? null })
+    }),
+
+  blockAccount: (sessionId: string, reason?: string | null) =>
+    http<{ account: AdminAccount | null }>(`/api/admin/accounts/${sessionId}/block`, {
+      method: "PATCH",
+      body: JSON.stringify({ blocked: true, reason: reason ?? null })
+    }),
+
+  unblockAccount: (sessionId: string) =>
+    http<{ account: AdminAccount | null }>(`/api/admin/accounts/${sessionId}/block`, {
+      method: "PATCH",
+      body: JSON.stringify({ blocked: false })
+    }),
+
   listStudentQuestions: () =>
     http<{ questions: StudentQuestion[] }>("/api/admin/student-questions"),
 
@@ -193,13 +211,23 @@ export interface AdminDashboardStats {
   dailyConversations: DailyConversationPoint[];
 }
 
+export type RiskLevel = "safe" | "risk" | "dangerous";
+
 export interface AdminAccount {
   id: string;
+  sessionId: string;
   name: string;
   loginMethod: string;
   osName: string;
   deviceType: string;
   browserName: string;
+  ipAddress: string | null;
+  ipLocation: string;
+  riskLevel: RiskLevel;
+  riskNote: string | null;
+  isBlocked: boolean;
+  blockedReason: string | null;
+  blockedAt: string | null;
   lastSeenAt: string;
   online: boolean;
 }

@@ -62,7 +62,17 @@ const STATEMENTS = [
     browser_version TEXT,
     device_type TEXT,
     device_vendor TEXT,
-    device_model TEXT
+    device_model TEXT,
+    last_ip_address TEXT,
+    last_ip_country TEXT,
+    last_ip_region TEXT,
+    last_ip_city TEXT,
+    last_ip_source TEXT,
+    risk_level TEXT NOT NULL DEFAULT 'safe',
+    is_blocked INTEGER NOT NULL DEFAULT 0,
+    blocked_at TEXT,
+    blocked_reason TEXT,
+    risk_note TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS chat_messages (
     id TEXT PRIMARY KEY,
@@ -141,6 +151,17 @@ export function runMigrations(sqlite: Database.Database): void {
     addColumnIfMissing(sqlite, "chat_sessions", "device_type", "device_type TEXT");
     addColumnIfMissing(sqlite, "chat_sessions", "device_vendor", "device_vendor TEXT");
     addColumnIfMissing(sqlite, "chat_sessions", "device_model", "device_model TEXT");
+    // Account security: login IP tracking + admin risk/block controls.
+    addColumnIfMissing(sqlite, "chat_sessions", "last_ip_address", "last_ip_address TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "last_ip_country", "last_ip_country TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "last_ip_region", "last_ip_region TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "last_ip_city", "last_ip_city TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "last_ip_source", "last_ip_source TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "risk_level", "risk_level TEXT NOT NULL DEFAULT 'safe'");
+    addColumnIfMissing(sqlite, "chat_sessions", "is_blocked", "is_blocked INTEGER NOT NULL DEFAULT 0");
+    addColumnIfMissing(sqlite, "chat_sessions", "blocked_at", "blocked_at TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "blocked_reason", "blocked_reason TEXT");
+    addColumnIfMissing(sqlite, "chat_sessions", "risk_note", "risk_note TEXT");
     addColumnIfMissing(sqlite, "book_chapters", "level", "level INTEGER NOT NULL DEFAULT 0");
     addColumnIfMissing(sqlite, "book_chapters", "source", "source TEXT NOT NULL DEFAULT 'manual'");
   });
