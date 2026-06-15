@@ -28,11 +28,23 @@ export async function parsePdfToContents(
 
     if (result.pages.length > 0) {
       for (const page of result.pages) {
+        // pdf-parse v2 numbers pages 1..numPages (see TextResult.num), so it is
+        // already the 1-based physical PDF page. We never derive the page from
+        // chunk order, a printed page label, or a cover/TOC offset: physical
+        // PDF page N must always persist as pageNumber N. Enforce the 1-based
+        // invariant and fail fast — silently converting a 0-based index would
+        // risk duplicate pageNumber values rather than surface the regression.
+        if (!Number.isInteger(page.num) || page.num < 1) {
+          throw new Error(
+            `Invalid PDF page number from parser: ${page.num}. Expected 1-based physical page number.`
+          );
+        }
+        const physicalPageNumber = page.num;
         for (const text of splitTextIntoParagraphs(page.text)) {
           contents.push({
             bookId,
             fileId,
-            pageNumber: page.num,
+            pageNumber: physicalPageNumber,
             orderIndex: orderIndex++,
             contentText: text
           });

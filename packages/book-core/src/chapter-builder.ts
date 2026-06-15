@@ -60,6 +60,11 @@ export async function extractPdfOutline(
  * Parse a page range embedded in an outline title, e.g. "01－1～37第1章" or
  * "000前1～2自序" -> { pageStart: 1, pageEnd: 37 }. Returns nulls when no range
  * is found. Handles half/full-width tildes and dashes.
+ *
+ * NOTE: the numbers in the title are PRINTED book page labels, not physical PDF
+ * pages, so they are only suitable as an optional display field. Do NOT use the
+ * result as a canonical chapter pageStart/pageEnd for content/chat/reader
+ * navigation — that must come from the physical PDF page (outline destination).
  */
 export function parsePageRangeFromTitle(title: string): {
   pageStart: number | null;
@@ -137,16 +142,17 @@ export async function buildChaptersFromPdfOutline(
   const chapters = ctx.repos.chapters.createMany(
     topLevel.map((entry, idx) => {
       const nextEntry = topLevel[idx + 1];
-      // Prefer the outline's destination page; otherwise parse the page range
-      // out of the title text so the page number is structured (not just text).
-      const parsed = parsePageRangeFromTitle(entry.title);
-      const pageStart = entry.pageNumber ?? parsed.pageStart;
+      // Canonical chapter page ranges must be PHYSICAL PDF pages so they align
+      // with content rows (which persist physical pageNumber). The outline's
+      // destination page (entry.pageNumber) is physical 1-based. We must NOT
+      // substitute a page number parsed out of the title text here, because
+      // that text is a printed book page label (e.g. "1～37"), not the physical
+      // PDF page, and mixing the two spaces breaks content/chat/reader linking.
+      const pageStart = entry.pageNumber ?? null;
       const pageEnd =
-        entry.pageNumber != null
-          ? nextEntry?.pageNumber
-            ? nextEntry.pageNumber - 1
-            : null
-          : parsed.pageEnd;
+        entry.pageNumber != null && nextEntry?.pageNumber != null
+          ? nextEntry.pageNumber - 1
+          : null;
       return {
         bookId,
         title: entry.title,
