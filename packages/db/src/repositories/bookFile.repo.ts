@@ -1,5 +1,10 @@
 import { eq } from "drizzle-orm";
-import type { BookFile, CreateBookFileInput, ParseStatus } from "@ai-smartbook/schema";
+import type {
+  BookFile,
+  BookFileRole,
+  CreateBookFileInput,
+  ParseStatus
+} from "@ai-smartbook/schema";
 import type { Db } from "../client";
 import { bookFiles } from "../schema";
 import { newId, nowIso } from "./util";
@@ -7,7 +12,11 @@ import { newId, nowIso } from "./util";
 type Row = typeof bookFiles.$inferSelect;
 
 function toFile(row: Row): BookFile {
-  return { ...row, parseStatus: row.parseStatus as ParseStatus };
+  return {
+    ...row,
+    role: row.role as BookFileRole,
+    parseStatus: row.parseStatus as ParseStatus
+  };
 }
 
 export function makeBookFileRepo(db: Db) {
@@ -21,6 +30,8 @@ export function makeBookFileRepo(db: Db) {
         filePath: input.filePath,
         fileType: input.fileType,
         fileSize: input.fileSize,
+        role: input.role ?? "source_document",
+        relatedFileId: input.relatedFileId ?? null,
         parseStatus: input.parseStatus ?? "pending",
         createdAt: ts,
         updatedAt: ts
@@ -36,6 +47,15 @@ export function makeBookFileRepo(db: Db) {
 
     findByBookId(bookId: string): BookFile[] {
       return db.select().from(bookFiles).where(eq(bookFiles.bookId, bookId)).all().map(toFile);
+    },
+
+    findByRelatedFileId(relatedFileId: string): BookFile[] {
+      return db
+        .select()
+        .from(bookFiles)
+        .where(eq(bookFiles.relatedFileId, relatedFileId))
+        .all()
+        .map(toFile);
     },
 
     delete(id: string): void {

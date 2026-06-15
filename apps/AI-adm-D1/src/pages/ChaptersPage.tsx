@@ -97,9 +97,9 @@ export function ChaptersPage() {
         actions={
           <>
             <Link className="admin-btn ghost" to="/admin/books">返回書本列表</Link>
-            <button className="admin-btn" disabled={busy} onClick={() => void run(() => adminApi.generateChapters(bookId), "已重新產生章節")}>
-              {busy ? "處理中…" : "重新產生章節"}
-            </button>
+            <Link className="admin-btn" to={`/admin/books/${bookId}/files`}>
+              Open Files Workflow
+            </Link>
             <button className="admin-btn secondary" disabled={busy} onClick={() => void run(() => adminApi.linkChapterContent(bookId), "已重新連結內容")}>
               重新連結內容
             </button>
@@ -126,7 +126,7 @@ export function ChaptersPage() {
 
       <AdminCard title={`章節列表（${chapters.length}）`}>
         {chapters.length === 0 ? (
-          <p className="muted">尚未建立章節，請按「重新產生章節」或於下方新增。</p>
+          <p className="muted">尚未建立章節，請先到 Files 頁完成 outline preview 與 Apply，再於此頁管理結果。</p>
         ) : (
           <div className="admin-table-wrap">
             <table>

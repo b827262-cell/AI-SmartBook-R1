@@ -19,6 +19,8 @@ export const bookFiles = sqliteTable("book_files", {
   filePath: text("file_path").notNull(),
   fileType: text("file_type").notNull(),
   fileSize: integer("file_size").notNull().default(0),
+  role: text("role").notNull().default("source_document"),
+  relatedFileId: text("related_file_id"),
   parseStatus: text("parse_status").notNull().default("pending"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()

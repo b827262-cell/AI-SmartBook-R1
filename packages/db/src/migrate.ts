@@ -20,6 +20,8 @@ const STATEMENTS = [
     file_path TEXT NOT NULL,
     file_type TEXT NOT NULL,
     file_size INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL DEFAULT 'source_document',
+    related_file_id TEXT,
     parse_status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -142,6 +144,8 @@ export function runMigrations(sqlite: Database.Database): void {
     // Backfill columns added after the initial schema. Existing rows pick up the
     // DEFAULT, so legacy books become '未分類' without a destructive migration.
     addColumnIfMissing(sqlite, "books", "category", "category TEXT NOT NULL DEFAULT '未分類'");
+    addColumnIfMissing(sqlite, "book_files", "role", "role TEXT NOT NULL DEFAULT 'source_document'");
+    addColumnIfMissing(sqlite, "book_files", "related_file_id", "related_file_id TEXT");
     addColumnIfMissing(sqlite, "chat_sessions", "last_seen_at", "last_seen_at TEXT");
     addColumnIfMissing(sqlite, "chat_sessions", "user_agent", "user_agent TEXT");
     addColumnIfMissing(sqlite, "chat_sessions", "os_name", "os_name TEXT");

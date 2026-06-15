@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import type { BookChapter } from "@ai-smartbook/schema";
 import { adminApi } from "../../api";
 
@@ -11,19 +12,6 @@ export function ChaptersTab({ bookId }: { bookId: string }) {
     adminApi.getChapters(bookId).then((d) => setChapters(d.chapters));
   }
   useEffect(reload, [bookId]);
-
-  async function onGenerate() {
-    setBusy(true);
-    setError("");
-    try {
-      await adminApi.generateChapters(bookId);
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function onSummarize(chapterId: string) {
     setBusy(true);
@@ -44,12 +32,12 @@ export function ChaptersTab({ bookId }: { bookId: string }) {
         <div>
           <h3 style={{ margin: 0 }}>章節（{chapters.length}）</h3>
           <p className="muted" style={{ margin: "4px 0 0" }}>
-            依 PDF 解析內容直接生成章節草稿。
+            Applied chapter results are managed from the Files tab after preview and apply.
           </p>
         </div>
-        <button className="btn" onClick={onGenerate} disabled={busy}>
-          {busy ? "處理中…" : "一鍵生成"}
-        </button>
+        <Link className="btn" to={`/admin/books/${bookId}/files`}>
+          Open Files Workflow
+        </Link>
       </div>
       {error && <p className="error">{error}</p>}
 

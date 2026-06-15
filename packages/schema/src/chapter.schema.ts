@@ -32,6 +32,50 @@ export const adminChapterSchema = bookChapterSchema.extend({
 });
 export type AdminChapter = z.infer<typeof adminChapterSchema>;
 
+export const chapterPreviewEntryTypeSchema = z.enum([
+  "front_matter",
+  "toc",
+  "chapter",
+  "appendix",
+  "copyright",
+  "back_matter",
+  "group",
+  "unknown"
+]);
+export type ChapterPreviewEntryType = z.infer<typeof chapterPreviewEntryTypeSchema>;
+
+export const chapterPreviewApplyStatusSchema = z.enum([
+  "ready",
+  "disabled",
+  "missing_page",
+  "invalid_range"
+]);
+export type ChapterPreviewApplyStatus = z.infer<typeof chapterPreviewApplyStatusSchema>;
+
+export const chapterPreviewRowSchema = z.object({
+  id: z.string().optional(),
+  outlineLevel: z.number().int().default(0),
+  enabled: z.boolean(),
+  originalTitle: z.string(),
+  referenceTitle: z.string().nullable().optional(),
+  suggestedTitle: z.string(),
+  printedPageLabel: z.string().nullable().optional(),
+  printedPageStart: z.string().nullable().optional(),
+  printedPageEnd: z.string().nullable().optional(),
+  pageStart: z.number().int().nullable(),
+  pageEnd: z.number().int().nullable(),
+  entryType: chapterPreviewEntryTypeSchema,
+  sortOrder: z.number().int(),
+  adminNote: z.string().nullable().optional(),
+  applyStatus: chapterPreviewApplyStatusSchema.optional()
+});
+export type ChapterPreviewRow = z.infer<typeof chapterPreviewRowSchema>;
+
+export const applyChapterPreviewInputSchema = z.object({
+  rows: z.array(chapterPreviewRowSchema)
+});
+export type ApplyChapterPreviewInput = z.infer<typeof applyChapterPreviewInputSchema>;
+
 export const createChapterInputSchema = z.object({
   bookId: z.string(),
   title: z.string().min(1, "title is required"),

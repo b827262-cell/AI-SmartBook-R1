@@ -7,7 +7,9 @@ import type {
   BookChapter,
   BookContent,
   BookFile,
+  BookFileRole,
   BookQaLog,
+  ChapterPreviewRow,
   CreateBookInput,
   UpdateBookInput
 } from "@ai-smartbook/schema";
@@ -35,6 +37,11 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface UploadBookFileOptions {
+  role?: BookFileRole;
+  relatedFileId?: string | null;
+}
+
 export const adminApi = {
   listBooks: () => http<{ books: Book[] }>("/api/admin/books"),
 
@@ -55,10 +62,12 @@ export const adminApi = {
       body: JSON.stringify(input)
     }),
 
-  uploadFile: (bookId: string, file: File) => {
+  uploadFile: (bookId: string, file: File, options?: UploadBookFileOptions) => {
     const form = new FormData();
     form.append("file", file);
     form.append("displayName", file.name);
+    if (options?.role) form.append("role", options.role);
+    if (options?.relatedFileId) form.append("relatedFileId", options.relatedFileId);
     return http<{ file: BookFile }>(`/api/admin/books/${bookId}/files`, {
       method: "POST",
       body: form
@@ -75,6 +84,21 @@ export const adminApi = {
       `/api/admin/books/${bookId}/files/${fileId}/parse`,
       { method: "POST" }
     ),
+
+  parseOutlinePreview: (bookId: string, fileId: string) =>
+    http<{ parsed: number; pageCount: number; rows: ChapterPreviewRow[] }>(
+      `/api/admin/books/${bookId}/files/${fileId}/outline-preview`,
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  applyChapterPreview: (bookId: string, fileId: string, rows: ChapterPreviewRow[]) =>
+    http<{ applied: number; skipped: number; linked: number; chapters: AdminChapter[] }>(
+      `/api/admin/books/${bookId}/files/${fileId}/apply-chapters`,
+      { method: "POST", body: JSON.stringify({ rows }) }
+    ),
+
+  getBookFileUrl: (bookId: string, fileId: string) =>
+    `/api/admin/books/${bookId}/files/${fileId}/raw`,
 
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/admin/books/${bookId}/contents`),

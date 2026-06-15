@@ -1,7 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { PDFParse } from "pdf-parse";
 import type { OutlineNode } from "pdf-parse";
-import type { BookChapter, BookContent } from "@ai-smartbook/schema";
+import type {
+  BookChapter,
+  BookContent,
+  ChapterPreviewApplyStatus,
+  ChapterPreviewEntryType,
+  ChapterPreviewRow
+} from "@ai-smartbook/schema";
 import type { BookCoreContext } from "./context";
 
 // ---------------------------------------------------------------------------
@@ -12,6 +18,12 @@ export interface PdfOutlineEntry {
   title: string;
   level: number;
   pageNumber: number | null;
+}
+
+export interface PrintedPageLabelParts {
+  label: string | null;
+  start: string | null;
+  end: string | null;
 }
 
 /**
@@ -88,6 +100,116 @@ export function parsePageRangeFromTitle(title: string): {
     if (Number.isFinite(a)) return { pageStart: a, pageEnd: null };
   }
   return { pageStart: null, pageEnd: null };
+}
+
+function normalizeOutlineTitle(title: string): string {
+  return title.replace(/\s+/g, "").trim();
+}
+
+function stripOutlineNumbering(title: string): string {
+  return normalizeOutlineTitle(title)
+    .replace(/^\d{1,3}\s*[—\-－]\s*/u, "")
+    .replace(/^0+(?=[前後])/u, "");
+}
+
+export function parsePrintedPageLabelFromTitle(title: string): PrintedPageLabelParts {
+  const stripped = stripOutlineNumbering(title);
+  const match = stripped.match(
+    /^((前|後)?\d{1,4}(?:\s*[~～〜]\s*\d{1,4})?(?:\+\d+[A-Za-z]*)?)/u
+  );
+  if (!match) {
+    return { label: null, start: null, end: null };
+  }
+
+  const label = match[1].replace(/\s+/g, "");
+  const range = label.match(/^(前|後)?(\d{1,4})(?:[~～〜](\d{1,4}(?:\+\d+[A-Za-z]*)?))?$/u);
+  if (!range) {
+    return { label, start: null, end: null };
+  }
+
+  const prefix = range[1] ?? "";
+  const start = `${prefix}${range[2]}`;
+  const end = range[3] ?? null;
+  return { label, start, end };
+}
+
+export function suggestChapterTitleFromOutline(title: string): string {
+  const stripped = stripOutlineNumbering(title);
+  const printed = parsePrintedPageLabelFromTitle(title);
+  let remainder = stripped;
+
+  if (printed.label && remainder.startsWith(printed.label)) {
+    remainder = remainder.slice(printed.label.length);
+  }
+
+  remainder = remainder.replace(/^[—\-－:：]+/u, "").trim();
+  return remainder || normalizeOutlineTitle(title);
+}
+
+export function inferChapterPreviewEntryType(
+  title: string,
+  hasPhysicalPage: boolean
+): ChapterPreviewEntryType {
+  const suggested = suggestChapterTitleFromOutline(title);
+  const normalized = normalizeOutlineTitle(suggested).toLowerCase();
+
+  if (/目錄|目录|contents|toc/u.test(normalized)) return "toc";
+  if (/版權|版权|copyright/u.test(normalized)) return "copyright";
+  if (/附錄|附录|appendix/u.test(normalized)) return "appendix";
+  if (/自序|序|前言|導讀|导读|preface|使用方式|建議|建议/u.test(normalized)) {
+    return "front_matter";
+  }
+  if (/後記|后记|索引|書店|书店|後期|后期|封底/u.test(normalized)) {
+    return "back_matter";
+  }
+  if (/第.+章|chapter/u.test(normalized)) return "chapter";
+  if (!hasPhysicalPage) return "group";
+  return "unknown";
+}
+
+export function getChapterPreviewApplyStatus(row: ChapterPreviewRow): ChapterPreviewApplyStatus {
+  if (!row.enabled) return "disabled";
+  if (row.pageStart == null || row.pageEnd == null) return "missing_page";
+  if (row.pageEnd < row.pageStart) return "invalid_range";
+  return "ready";
+}
+
+export async function buildChapterPreviewRowsFromPdfOutline(
+  filePath: string,
+  pageCount: number
+): Promise<ChapterPreviewRow[]> {
+  const outline = await extractPdfOutline(filePath);
+  if (outline.length === 0) return [];
+
+  return outline.map((entry, index) => {
+    const printed = parsePrintedPageLabelFromTitle(entry.title);
+    const nextWithPage = outline.slice(index + 1).find((candidate) => candidate.pageNumber != null);
+    const pageStart = entry.pageNumber ?? null;
+    const pageEnd =
+      pageStart == null
+        ? null
+        : nextWithPage?.pageNumber != null
+          ? Math.max(pageStart, nextWithPage.pageNumber - 1)
+          : Math.max(pageStart, pageCount || pageStart);
+    const suggestedTitle = suggestChapterTitleFromOutline(entry.title);
+    const row: ChapterPreviewRow = {
+      id: `preview-${index + 1}`,
+      outlineLevel: entry.level,
+      enabled: pageStart != null,
+      originalTitle: entry.title,
+      referenceTitle: null,
+      suggestedTitle,
+      printedPageLabel: printed.label,
+      printedPageStart: printed.start,
+      printedPageEnd: printed.end,
+      pageStart,
+      pageEnd,
+      entryType: inferChapterPreviewEntryType(entry.title, pageStart != null),
+      sortOrder: index + 1,
+      adminNote: null
+    };
+    return { ...row, applyStatus: getChapterPreviewApplyStatus(row) };
+  });
 }
 
 /**

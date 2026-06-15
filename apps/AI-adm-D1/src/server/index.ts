@@ -9,12 +9,16 @@ import {
   splitBookIntoChapters,
   buildChaptersFromContents,
   buildChaptersFromPdfOutline,
+  buildChapterPreviewRowsFromPdfOutline,
+  getChapterPreviewApplyStatus,
   linkChaptersByPageRange,
   summarizeChapter,
   askBookQuestion,
   type BookCoreContext
 } from "@ai-smartbook/book-core";
 import {
+  applyChapterPreviewInputSchema,
+  bookFileRoleSchema,
   createBookInputSchema,
   updateBookInputSchema,
   createChapterInputSchema,
@@ -27,7 +31,9 @@ import {
   blockAccountInputSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
+  type BookFile,
   type BookAiJob,
+  type ChapterPreviewRow,
   type ChatSession
 } from "@ai-smartbook/schema";
 
@@ -114,6 +120,54 @@ app.use("/api/uploads/appearance", express.static(APPEARANCE_UPLOAD_DIR));
 
 function fail(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
+}
+
+function isPdfBookFile(file: BookFile): boolean {
+  return file.fileType === "application/pdf" || file.fileName.toLowerCase().endsWith(".pdf");
+}
+
+function isPdfUpload(fileName: string, fileType: string): boolean {
+  return fileType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
+}
+
+function isImageMimeType(mimeType: string): boolean {
+  return /^image\//.test(mimeType);
+}
+
+function deleteStoredBookFile(file: BookFile): void {
+  if (existsSync(file.filePath)) {
+    unlinkSync(file.filePath);
+  }
+  repos.contents.deleteByFileId(file.id);
+  repos.files.delete(file.id);
+}
+
+async function replaceParsedContentsForFile(file: BookFile) {
+  if (!isPdfBookFile(file)) {
+    throw new Error("Only PDF source documents can be parsed.");
+  }
+
+  repos.contents.deleteByFileId(file.id);
+  const { contents, pageCount } = await parsePdfToContents(file.filePath, file.bookId, file.id);
+  repos.contents.createMany(contents);
+  repos.files.updateParseStatus(file.id, "parsed");
+  return { parsed: contents.length, pageCount };
+}
+
+function normalizePreviewRowsForApply(rows: ChapterPreviewRow[]): ChapterPreviewRow[] {
+  return rows.map((row, index) => {
+    const normalized: ChapterPreviewRow = {
+      ...row,
+      suggestedTitle: row.suggestedTitle.trim() || row.originalTitle.trim() || `Chapter ${index + 1}`,
+      originalTitle: row.originalTitle.trim(),
+      referenceTitle: row.referenceTitle?.trim() || null,
+      printedPageLabel: row.printedPageLabel?.trim() || null,
+      printedPageStart: row.printedPageStart?.trim() || null,
+      printedPageEnd: row.printedPageEnd?.trim() || null,
+      adminNote: row.adminNote?.trim() || null
+    };
+    return { ...normalized, applyStatus: getChapterPreviewApplyStatus(normalized) };
+  });
 }
 
 const APPEARANCE_KEY = "appearance";
@@ -585,6 +639,34 @@ app.post("/api/admin/books/:bookId/files", upload.single("file"), (req, res) => 
       ? req.body.displayName
       : file.originalname;
   const displayName = sanitizeUploadFileName(rawDisplayName);
+  const parsedRole = bookFileRoleSchema.safeParse(req.body?.role ?? "source_document");
+  if (!parsedRole.success) return fail(res, 400, parsedRole.error.message);
+
+  const role = parsedRole.data;
+  const relatedFileId =
+    typeof req.body?.relatedFileId === "string" && req.body.relatedFileId.trim() !== ""
+      ? req.body.relatedFileId.trim()
+      : null;
+
+  if (role === "source_document" && !isPdfUpload(displayName, file.mimetype || "")) {
+    return fail(res, 400, "Source documents must be uploaded as PDF files.");
+  }
+
+  if (role === "reference_image") {
+    if (!isImageMimeType(file.mimetype || "")) {
+      return fail(res, 400, "Reference images must use an image/* content type.");
+    }
+    if (!relatedFileId) {
+      return fail(res, 400, "Reference images require a relatedFileId.");
+    }
+    const relatedFile = repos.files.findById(relatedFileId);
+    if (!relatedFile || relatedFile.bookId !== book.id) {
+      return fail(res, 404, "Related PDF file not found.");
+    }
+    if (!isPdfBookFile(relatedFile)) {
+      return fail(res, 400, "Reference images can only be attached to a PDF source document.");
+    }
+  }
 
   const record = repos.files.create({
     bookId: book.id,
@@ -592,25 +674,31 @@ app.post("/api/admin/books/:bookId/files", upload.single("file"), (req, res) => 
     filePath: file.path,
     fileType: file.mimetype || "application/octet-stream",
     fileSize: file.size,
+    role,
+    relatedFileId: role === "reference_image" ? relatedFileId : null,
     parseStatus: "pending"
   });
   res.status(201).json({ file: record });
+});
+
+app.get("/api/admin/books/:bookId/files/:fileId/raw", (req, res) => {
+  const file = repos.files.findById(req.params.fileId);
+  if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
+  res.sendFile(file.filePath);
 });
 
 app.delete("/api/admin/books/:bookId/files/:fileId", (req, res) => {
   const file = repos.files.findById(req.params.fileId);
   if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
 
-  if (existsSync(file.filePath)) {
-    try {
-      unlinkSync(file.filePath);
-    } catch (err) {
-      return fail(res, 500, err instanceof Error ? err.message : "delete file failed");
+  try {
+    for (const related of repos.files.findByRelatedFileId(file.id)) {
+      deleteStoredBookFile(related);
     }
+    deleteStoredBookFile(file);
+  } catch (err) {
+    return fail(res, 500, err instanceof Error ? err.message : "delete file failed");
   }
-
-  repos.contents.deleteByFileId(file.id);
-  repos.files.delete(file.id);
 
   res.json({ deleted: true });
 });
@@ -620,17 +708,77 @@ app.post("/api/admin/books/:bookId/files/:fileId/parse", async (req, res) => {
   if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
 
   try {
-    const { contents, pageCount } = await parsePdfToContents(
-      file.filePath,
-      file.bookId,
-      file.id
-    );
-    repos.contents.createMany(contents);
-    repos.files.updateParseStatus(file.id, "parsed");
-    res.json({ parsed: contents.length, pageCount, fileId: file.id });
+    const result = await replaceParsedContentsForFile(file);
+    res.json({ ...result, fileId: file.id });
   } catch (err) {
     repos.files.updateParseStatus(file.id, "failed");
     fail(res, 500, err instanceof Error ? err.message : "parse failed");
+  }
+});
+
+app.post("/api/admin/books/:bookId/files/:fileId/outline-preview", async (req, res) => {
+  const file = repos.files.findById(req.params.fileId);
+  if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
+  if (!isPdfBookFile(file)) return fail(res, 400, "outline preview requires a PDF source document");
+
+  try {
+    const { parsed, pageCount } = await replaceParsedContentsForFile(file);
+    const rows = await buildChapterPreviewRowsFromPdfOutline(file.filePath, pageCount);
+    res.json({ parsed, pageCount, rows });
+  } catch (err) {
+    repos.files.updateParseStatus(file.id, "failed");
+    fail(res, 500, err instanceof Error ? err.message : "outline preview failed");
+  }
+});
+
+app.post("/api/admin/books/:bookId/files/:fileId/apply-chapters", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const file = repos.files.findById(req.params.fileId);
+  if (!file || file.bookId !== book.id) return fail(res, 404, "file not found");
+  if (!isPdfBookFile(file)) return fail(res, 400, "chapter apply requires a PDF source document");
+
+  const parsed = applyChapterPreviewInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+
+  try {
+    const normalizedRows = normalizePreviewRowsForApply(parsed.data.rows);
+    const readyRows = normalizedRows
+      .filter((row) => row.applyStatus === "ready")
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+    const hasFileContents = repos.contents.findByBookId(book.id).some((content) => content.fileId === file.id);
+    if (!hasFileContents) {
+      await replaceParsedContentsForFile(file);
+    }
+
+    repos.contents.unlinkChaptersByBookId(book.id);
+    repos.chapters.deleteByBookId(book.id);
+
+    repos.chapters.createMany(
+      readyRows.map((row, index) => ({
+        bookId: book.id,
+        title: row.suggestedTitle,
+        summary: row.adminNote ?? null,
+        orderIndex: index,
+        pageStart: row.pageStart,
+        pageEnd: row.pageEnd,
+        level: row.outlineLevel ?? 0,
+        source: row.originalTitle ? "pdf_outline" : "manual",
+        status: "draft"
+      }))
+    );
+
+    const linked = linkChaptersByPageRange(ctx, book.id);
+    res.json({
+      applied: readyRows.length,
+      skipped: normalizedRows.length - readyRows.length,
+      linked,
+      chapters: enrichChapters(book.id)
+    });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "apply chapters failed");
   }
 });
 
