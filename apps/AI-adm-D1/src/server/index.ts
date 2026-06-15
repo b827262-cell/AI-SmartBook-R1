@@ -134,6 +134,13 @@ function isImageMimeType(mimeType: string): boolean {
   return /^image\//.test(mimeType);
 }
 
+function isImageFile(file: Pick<BookFile, "fileName" | "fileType">): boolean {
+  return (
+    isImageMimeType(file.fileType) ||
+    /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.fileName)
+  );
+}
+
 function deleteStoredBookFile(file: BookFile): void {
   if (existsSync(file.filePath)) {
     unlinkSync(file.filePath);
@@ -703,23 +710,55 @@ app.delete("/api/admin/books/:bookId/files/:fileId", (req, res) => {
   res.json({ deleted: true });
 });
 
-app.post("/api/admin/books/:bookId/files/:fileId/parse", async (req, res) => {
+app.post("/api/admin/books/:bookId/files/:fileId/parse-content", async (req, res) => {
   const file = repos.files.findById(req.params.fileId);
   if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
+  if (file.role !== "source_document" || !isPdfBookFile(file)) {
+    return fail(res, 400, "content parsing requires a PDF source document");
+  }
 
   try {
     const result = await replaceParsedContentsForFile(file);
     res.json({ ...result, fileId: file.id });
   } catch (err) {
     repos.files.updateParseStatus(file.id, "failed");
-    fail(res, 500, err instanceof Error ? err.message : "parse failed");
+    fail(res, 500, err instanceof Error ? err.message : "parse content failed");
   }
+});
+
+app.post("/api/admin/books/:bookId/files/:fileId/attach-reference-image", (req, res) => {
+  const file = repos.files.findById(req.params.fileId);
+  if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
+  if (!isImageFile(file)) return fail(res, 400, "only image files can be attached as reference images");
+
+  const relatedFileId =
+    typeof req.body?.relatedFileId === "string" && req.body.relatedFileId.trim() !== ""
+      ? req.body.relatedFileId.trim()
+      : "";
+  if (!relatedFileId) return fail(res, 400, "relatedFileId is required");
+
+  const relatedFile = repos.files.findById(relatedFileId);
+  if (!relatedFile || relatedFile.bookId !== req.params.bookId) {
+    return fail(res, 404, "related PDF file not found");
+  }
+  if (relatedFile.role !== "source_document" || !isPdfBookFile(relatedFile)) {
+    return fail(res, 400, "reference images must be attached to a PDF source document");
+  }
+
+  const updated = repos.files.updateMetadata(file.id, {
+    role: "reference_image",
+    relatedFileId: relatedFile.id
+  });
+  if (!updated) return fail(res, 500, "failed to update file classification");
+  res.json({ file: updated });
 });
 
 app.post("/api/admin/books/:bookId/files/:fileId/outline-preview", async (req, res) => {
   const file = repos.files.findById(req.params.fileId);
   if (!file || file.bookId !== req.params.bookId) return fail(res, 404, "file not found");
-  if (!isPdfBookFile(file)) return fail(res, 400, "outline preview requires a PDF source document");
+  if (file.role !== "source_document" || !isPdfBookFile(file)) {
+    return fail(res, 400, "outline preview requires a PDF source document");
+  }
 
   try {
     const { parsed, pageCount } = await replaceParsedContentsForFile(file);
@@ -737,7 +776,9 @@ app.post("/api/admin/books/:bookId/files/:fileId/apply-chapters", async (req, re
 
   const file = repos.files.findById(req.params.fileId);
   if (!file || file.bookId !== book.id) return fail(res, 404, "file not found");
-  if (!isPdfBookFile(file)) return fail(res, 400, "chapter apply requires a PDF source document");
+  if (file.role !== "source_document" || !isPdfBookFile(file)) {
+    return fail(res, 400, "chapter apply requires a PDF source document");
+  }
 
   const parsed = applyChapterPreviewInputSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, parsed.error.message);

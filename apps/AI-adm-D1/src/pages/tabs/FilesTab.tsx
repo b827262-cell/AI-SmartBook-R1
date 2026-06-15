@@ -18,6 +18,23 @@ const ENTRY_TYPE_OPTIONS: ChapterPreviewEntryType[] = [
   "unknown"
 ];
 
+type FileRowKind = "pdf_source" | "reference_image" | "misclassified_image" | "unsupported_source";
+
+function isPdfFile(file: Pick<BookFile, "fileName" | "fileType">): boolean {
+  return file.fileType === "application/pdf" || file.fileName.toLowerCase().endsWith(".pdf");
+}
+
+function isImageFile(file: Pick<BookFile, "fileName" | "fileType">): boolean {
+  return /^image\//.test(file.fileType) || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.fileName);
+}
+
+function getFileRowKind(file: BookFile): FileRowKind {
+  if (file.role === "reference_image") return "reference_image";
+  if (isPdfFile(file)) return "pdf_source";
+  if (isImageFile(file)) return "misclassified_image";
+  return "unsupported_source";
+}
+
 function getApplyStatus(row: ChapterPreviewRow): ChapterPreviewApplyStatus {
   if (!row.enabled) return "disabled";
   if (row.pageStart == null || row.pageEnd == null) return "missing_page";
@@ -59,7 +76,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
     void reload().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [bookId]);
 
-  const pdfFiles = files.filter((file) => file.role !== "reference_image");
+  const pdfFiles = files.filter((file) => getFileRowKind(file) === "pdf_source");
   const referenceImages = files.filter((file) => file.role === "reference_image");
   const previewFile = previewFileId ? files.find((file) => file.id === previewFileId) ?? null : null;
   const previewReferenceImages = previewFileId
@@ -97,6 +114,11 @@ export function FilesTab({ bookId }: { bookId: string }) {
   async function onUploadPdf() {
     const file = inputRef.current?.files?.[0];
     if (!file) return;
+    if (!(file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) {
+      setError("Upload PDF accepts PDF files only.");
+      setMsg("");
+      return;
+    }
     await run(async () => {
       await adminApi.uploadFile(bookId, file, { role: "source_document" });
       setMsg(`Uploaded PDF: ${file.name}`);
@@ -129,6 +151,14 @@ export function FilesTab({ bookId }: { bookId: string }) {
     });
   }
 
+  async function onParseContent(fileId: string) {
+    await run(async () => {
+      const result = await adminApi.parseContent(bookId, fileId);
+      setMsg(`Parsed ${result.parsed} content blocks from ${result.pageCount} PDF pages.`);
+      await reload();
+    });
+  }
+
   async function onParseOutline(fileId: string) {
     await run(async () => {
       const result = await adminApi.parseOutlinePreview(bookId, fileId);
@@ -145,6 +175,44 @@ export function FilesTab({ bookId }: { bookId: string }) {
       setTimeout(() => {
         previewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 0);
+    });
+  }
+
+  async function onAttachAsReferenceImage(file: BookFile) {
+    if (!isImageFile(file)) return;
+    if (pdfFiles.length === 0) {
+      setError("Upload a PDF source file before attaching reference images.");
+      setMsg("");
+      return;
+    }
+
+    let relatedFileId = pdfFiles[0]?.id ?? "";
+    if (pdfFiles.length > 1) {
+      const promptText = [
+        `Attach "${file.fileName}" as a reference image.`,
+        "Enter the target PDF file id from this list:",
+        ...pdfFiles.map((pdf) => `${pdf.id} :: ${pdf.fileName}`)
+      ].join("\n");
+      const selected = window.prompt(promptText, relatedFileId)?.trim() ?? "";
+      relatedFileId = selected;
+    }
+
+    const targetPdf = pdfFiles.find((pdf) => pdf.id === relatedFileId);
+    if (!targetPdf) {
+      setError("A valid target PDF file id is required to attach this reference image.");
+      setMsg("");
+      return;
+    }
+
+    await run(async () => {
+      await adminApi.attachAsReferenceImage(bookId, file.id, targetPdf.id);
+      setMsg(`Attached "${file.fileName}" to PDF "${targetPdf.fileName}" as a reference image.`);
+      if (previewFileId === file.id) {
+        setPreviewFileId(null);
+        setPreviewRows([]);
+        setPreviewPageCount(0);
+      }
+      await reload();
     });
   }
 
@@ -168,6 +236,10 @@ export function FilesTab({ bookId }: { bookId: string }) {
     const firstReference = referenceImages.find((file) => file.relatedFileId === fileId);
     if (!firstReference) return;
     window.open(adminApi.getBookFileUrl(bookId, firstReference.id), "_blank", "noopener,noreferrer");
+  }
+
+  function onViewImageFile(fileId: string) {
+    window.open(adminApi.getBookFileUrl(bookId, fileId), "_blank", "noopener,noreferrer");
   }
 
   function updateRow(index: number, next: ChapterPreviewRow) {
@@ -273,6 +345,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
               </thead>
               <tbody>
                 {files.map((file) => {
+                  const rowKind = getFileRowKind(file);
                   const relatedPdf =
                     file.relatedFileId != null
                       ? files.find((candidate) => candidate.id === file.relatedFileId) ?? null
@@ -280,16 +353,40 @@ export function FilesTab({ bookId }: { bookId: string }) {
                   const fileReferenceCount = referenceImages.filter(
                     (candidate) => candidate.relatedFileId === file.id
                   ).length;
-                  const isPdf = file.role !== "reference_image";
+                  const isPdfRow = rowKind === "pdf_source";
+                  const isReferenceImageRow = rowKind === "reference_image";
+                  const isMisclassifiedImageRow = rowKind === "misclassified_image";
+                  const contentActionLabel = file.parseStatus === "parsed" ? "Re-parse Content" : "Parse Content";
+                  const outlineActionLabel = file.parseStatus === "parsed" ? "Re-parse Outline" : "Parse Outline";
 
                   return (
                     <tr key={file.id}>
-                      <td>{file.fileName}</td>
-                      <td>{file.role === "reference_image" ? "Reference image" : "PDF source"}</td>
+                      <td>
+                        <div>{file.fileName}</div>
+                        {isMisclassifiedImageRow ? (
+                          <div className="error" style={{ marginTop: 6 }}>
+                            Image file is misclassified as PDF source.
+                          </div>
+                        ) : null}
+                        {rowKind === "unsupported_source" ? (
+                          <div className="error" style={{ marginTop: 6 }}>
+                            Unsupported source file type. Only PDF source files are parseable here.
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {isPdfRow
+                          ? "PDF source"
+                          : isReferenceImageRow
+                            ? "Reference image"
+                            : isMisclassifiedImageRow
+                              ? "Misclassified image"
+                              : "Unsupported source"}
+                      </td>
                       <td>{relatedPdf?.fileName ?? "—"}</td>
                       <td>{(file.fileSize / 1024).toFixed(1)} KB</td>
                       <td>
-                        {isPdf ? (
+                        {isPdfRow ? (
                           <span className={`badge ${file.parseStatus}`}>{file.parseStatus}</span>
                         ) : (
                           <span className="muted">N/A</span>
@@ -297,14 +394,21 @@ export function FilesTab({ bookId }: { bookId: string }) {
                       </td>
                       <td>
                         <div className="row" style={{ gap: 8 }}>
-                          {isPdf ? (
+                          {isPdfRow ? (
                             <>
+                              <button
+                                className="btn secondary"
+                                onClick={() => void onParseContent(file.id)}
+                                disabled={busy}
+                              >
+                                {contentActionLabel}
+                              </button>
                               <button
                                 className="btn secondary"
                                 onClick={() => void onParseOutline(file.id)}
                                 disabled={busy}
                               >
-                                {file.parseStatus === "parsed" ? "Re-parse Outline" : "Parse Outline"}
+                                {outlineActionLabel}
                               </button>
                               <button
                                 className="btn secondary"
@@ -321,6 +425,24 @@ export function FilesTab({ bookId }: { bookId: string }) {
                                 View Reference Image
                               </button>
                             </>
+                          ) : null}
+                          {isReferenceImageRow ? (
+                            <button
+                              className="btn secondary"
+                              onClick={() => onViewImageFile(file.id)}
+                              disabled={busy}
+                            >
+                              View Reference Image
+                            </button>
+                          ) : null}
+                          {isMisclassifiedImageRow ? (
+                            <button
+                              className="btn secondary"
+                              onClick={() => void onAttachAsReferenceImage(file)}
+                              disabled={busy}
+                            >
+                              Attach as Reference Image
+                            </button>
                           ) : null}
                           <button
                             className="btn secondary"
@@ -344,7 +466,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
         <div className="card" ref={previewSectionRef}>
           <div className="row between" style={{ alignItems: "flex-start" }}>
             <div>
-              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Chapter Preview</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Preview Chapters</h3>
               <p className="muted" style={{ margin: 0 }}>
                 File: <strong>{previewFile?.fileName ?? previewFileId}</strong> · Physical PDF pages:{" "}
                 <strong>{previewPageCount}</strong> · Preview rows: <strong>{previewRows.length}</strong>

@@ -69,6 +69,23 @@ export function makeBookFileRepo(db: Db) {
         .run();
     },
 
+    updateMetadata(
+      id: string,
+      input: {
+        role?: BookFileRole;
+        relatedFileId?: string | null;
+        parseStatus?: ParseStatus;
+      }
+    ): BookFile | null {
+      const patch: Partial<Row> = { updatedAt: nowIso() };
+      if (input.role !== undefined) patch.role = input.role;
+      if (input.relatedFileId !== undefined) patch.relatedFileId = input.relatedFileId ?? null;
+      if (input.parseStatus !== undefined) patch.parseStatus = input.parseStatus;
+      db.update(bookFiles).set(patch).where(eq(bookFiles.id, id)).run();
+      const row = db.select().from(bookFiles).where(eq(bookFiles.id, id)).get();
+      return row ? toFile(row) : null;
+    },
+
     resetParseStatusByBookId(bookId: string, status: ParseStatus = "pending"): void {
       db.update(bookFiles)
         .set({ parseStatus: status, updatedAt: nowIso() })

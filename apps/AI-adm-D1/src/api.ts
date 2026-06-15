@@ -79,9 +79,9 @@ export const adminApi = {
       method: "DELETE"
     }),
 
-  parseFile: (bookId: string, fileId: string) =>
+  parseContent: (bookId: string, fileId: string) =>
     http<{ parsed: number; pageCount: number }>(
-      `/api/admin/books/${bookId}/files/${fileId}/parse`,
+      `/api/admin/books/${bookId}/files/${fileId}/parse-content`,
       { method: "POST" }
     ),
 
@@ -99,6 +99,12 @@ export const adminApi = {
 
   getBookFileUrl: (bookId: string, fileId: string) =>
     `/api/admin/books/${bookId}/files/${fileId}/raw`,
+
+  attachAsReferenceImage: (bookId: string, fileId: string, relatedFileId: string) =>
+    http<{ file: BookFile }>(`/api/admin/books/${bookId}/files/${fileId}/attach-reference-image`, {
+      method: "POST",
+      body: JSON.stringify({ relatedFileId })
+    }),
 
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/admin/books/${bookId}/contents`),
