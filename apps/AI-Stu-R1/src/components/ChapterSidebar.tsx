@@ -7,14 +7,16 @@ import type { BookChapter } from "@ai-smartbook/schema";
 export function ChapterSidebar({
   chapters,
   activeChapter,
-  onSelect
+  onSelect,
+  width
 }: {
   chapters: BookChapter[];
   activeChapter: string | null;
   onSelect: (chapterId: string | null) => void;
+  width?: number;
 }) {
   return (
-    <aside className="reader-toc">
+    <aside className="reader-toc" style={width != null ? { width } : undefined}>
       <h4>章節目錄</h4>
       <ul className="chapter-list">
         <li>

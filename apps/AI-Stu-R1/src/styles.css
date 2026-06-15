@@ -598,47 +598,52 @@ a { color: var(--primary); text-decoration: none; }
 .reader-tab:hover { color: var(--text); }
 .reader-tab.active { color: var(--primary); font-weight: 700; border-bottom-color: var(--primary); }
 
-/* Three-column workbench: [chapter TOC] [protected PDF] [AI chat] */
+/* Resizable workbench: [chapter TOC] | [protected PDF] | [AI chat] */
 .reader-main {
-  display: grid; grid-template-columns: 240px minmax(0, 6fr) minmax(0, 4fr); gap: 16px;
-  height: calc(100vh - 268px); min-height: 480px;
+  display: flex; align-items: stretch; gap: 0;
+  height: calc(100vh - 268px); min-height: 480px; overflow: hidden;
 }
-.reader-main.ratio-6-4 { grid-template-columns: 240px minmax(0, 6fr) minmax(0, 4fr); }
-.reader-main.ratio-1-1 { grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr); }
-.reader-main.ratio-4-6 { grid-template-columns: 240px minmax(0, 4fr) minmax(0, 6fr); }
-
-/* Chapter outline collapsed -> drop the fixed 240px column. */
-.reader-main.toc-collapsed,
-.reader-main.toc-collapsed.ratio-6-4 { grid-template-columns: minmax(0, 6fr) minmax(0, 4fr); }
-.reader-main.toc-collapsed.ratio-1-1 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.reader-main.toc-collapsed.ratio-4-6 { grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); }
-
-/* AI collapsed -> PDF uses all remaining width; ratio must not squeeze PDF. */
-.reader-main.ai-collapsed,
-.reader-main.ai-collapsed.ratio-6-4,
-.reader-main.ai-collapsed.ratio-1-1,
-.reader-main.ai-collapsed.ratio-4-6 { grid-template-columns: 240px minmax(0, 1fr); }
-
-/* Both collapsed -> PDF full width. */
-.reader-main.toc-collapsed.ai-collapsed,
-.reader-main.toc-collapsed.ai-collapsed.ratio-6-4,
-.reader-main.toc-collapsed.ai-collapsed.ratio-1-1,
-.reader-main.toc-collapsed.ai-collapsed.ratio-4-6 { grid-template-columns: minmax(0, 1fr); }
-
 .reader-main > * { min-height: 0; }
+
+/* TOC and AI panes carry explicit (draggable) widths; PDF flexes to fill. */
+.reader-toc { flex: 0 0 auto; }
+.reader-chat-col { flex: 0 0 auto; }
+.reader-pdf-col { flex: 1 1 0; min-width: 480px; }
+
+/* Draggable split handle between panes. */
+.reader-split {
+  flex: 0 0 14px; align-self: stretch; position: relative;
+  cursor: col-resize; touch-action: none; background: transparent;
+}
+.reader-split-grip {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 2px; height: 48px; border-radius: 2px; background: var(--border);
+  transition: background 0.15s ease, height 0.15s ease;
+}
+.reader-split:hover .reader-split-grip,
+body.reader-resizing .reader-split-grip { background: var(--primary); height: 72px; }
+body.reader-resizing { cursor: col-resize; user-select: none; }
 
 .reader-toc, .reader-viewport, .reader-pdf-col, .reader-chat-col {
   background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
   box-shadow: 0 10px 26px rgba(20, 34, 53, 0.06); display: flex; flex-direction: column; overflow: hidden;
 }
 
-/* PDF column = the only main reading body. The protected PDF frame fills it. */
+/* PDF column = the only main reading body; the PDF.js canvas fills it. */
 .reader-pdf-col { background: #f3f8ff; }
-.reader-pdf-col .student-pdf-frame {
-  flex: 1; min-height: 0; border: none; border-radius: 0; background: #f3f8ff;
+.pdf-canvas-frame {
+  position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; background: #eef4fb;
 }
-.reader-pdf-col .student-pdf-iframe { height: 100%; min-height: 0; }
-.reader-pdf-status {
+.pdf-canvas-scroll {
+  flex: 1; min-height: 0; overflow: auto; display: flex;
+  justify-content: center; align-items: flex-start; padding: 16px;
+}
+.pdf-canvas {
+  display: block; background: #fff; box-shadow: 0 6px 22px rgba(20, 34, 53, 0.16);
+}
+.pdf-canvas.is-hidden { display: none; }
+.pdf-canvas-status { margin: auto; padding: 24px; text-align: center; }
+.reader-pdf-status-wrap {
   flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center;
 }
 .reader-toc { padding: 16px; overflow-y: auto; }
@@ -698,6 +703,10 @@ a { color: var(--primary); text-decoration: none; }
 .pdf-toolbar select.tool-select { width: auto; max-width: 320px; }
 .pdf-toolbar .tool-page { font-weight: 600; color: var(--text); }
 .pdf-toolbar .tool-btn.ask { margin-left: 0; }
+.tool-pagenav { display: inline-flex; align-items: center; gap: 6px; }
+.tool-pagenav .tool-btn { padding: 6px 9px; line-height: 1; }
+.tool-pagenav .tool-page { min-width: 76px; text-align: center; }
+.tool-btn:disabled { opacity: 0.45; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
 
 /* Sticky-note modal */
 .note-modal-backdrop {
@@ -740,20 +749,14 @@ a { color: var(--primary); text-decoration: none; }
 .tab-placeholder-card h3 { margin: 0 0 8px; }
 
 @media (max-width: 1024px) {
-  .reader-main,
-  .reader-main.ratio-6-4,
-  .reader-main.ratio-1-1,
-  .reader-main.ratio-4-6,
-  .reader-main.toc-collapsed,
-  .reader-main.toc-collapsed.ratio-6-4,
-  .reader-main.toc-collapsed.ratio-1-1,
-  .reader-main.toc-collapsed.ratio-4-6,
-  .reader-main.ai-collapsed,
-  .reader-main.toc-collapsed.ai-collapsed {
-    grid-template-columns: 1fr; height: auto;
+  .reader-main { flex-direction: column; height: auto; overflow: visible; }
+  /* Stack panes; drag handles and explicit widths do not apply on mobile. */
+  .reader-split { display: none; }
+  .reader-toc, .reader-viewport, .reader-pdf-col, .reader-chat-col {
+    height: auto; width: auto !important; flex: 0 0 auto;
   }
-  .reader-toc, .reader-viewport, .reader-pdf-col, .reader-chat-col { height: auto; }
-  .reader-pdf-col .student-pdf-frame { min-height: 60vh; }
+  .reader-pdf-col { min-width: 0; }
+  .pdf-canvas-frame { min-height: 60vh; }
   .reader-paper-scroll { max-height: 60vh; }
   .reader-chat-col .chat-wrap { height: 460px; }
   .reader-topbar { grid-template-columns: auto 1fr auto; }

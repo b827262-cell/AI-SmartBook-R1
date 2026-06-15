@@ -17,6 +17,7 @@
     "@ai-smartbook/student-runtime": "workspace:*",
     "better-sqlite3": "latest",
     "express": "^4.19.2",
+    "pdfjs-dist": "5.4.296",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0"

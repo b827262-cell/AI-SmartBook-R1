@@ -6,7 +6,12 @@ import type { StudentBook } from "../bookDisplay";
 import { ReaderTopBar } from "../components/ReaderTopBar";
 import { ReaderTabs, READER_TABS, type ReaderTabKey } from "../components/ReaderTabs";
 import { ChapterSidebar } from "../components/ChapterSidebar";
-import { PdfReaderToolbar, type ReaderRatio } from "../components/PdfReaderToolbar";
+import {
+  PdfReaderToolbar,
+  RATIO_AI_WIDTH,
+  type ReaderRatio
+} from "../components/PdfReaderToolbar";
+import { ProtectedPdfViewer } from "../components/ProtectedPdfViewer";
 import { ChatPanel } from "../components/ChatPanel";
 import { StickyNoteModal } from "../components/StickyNoteModal";
 import { TabPlaceholder } from "../components/TabPlaceholder";
@@ -19,10 +24,77 @@ const QUICK_PROMPTS = [
   "關鍵字找考題"
 ];
 
-const PDF_WATERMARK_TILES = Array.from({ length: 8 }, (_, index) => index);
+// Resizable pane bounds (desktop). PDF area is flexible (min-width in CSS).
+const TOC_MIN = 220;
+const TOC_MAX = 420;
+const TOC_DEFAULT = 260;
+const AI_MIN = 300;
+const AI_MAX = 560;
+const AI_DEFAULT = 380;
+const TOC_WIDTH_KEY = "smartbook.reader.tocWidth";
+const AI_WIDTH_KEY = "smartbook.reader.aiWidth";
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function readStoredWidth(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) ? clamp(n, min, max) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function studentSessionKey(bookId: string): string {
   return `smartbook.chatSession.${bookId}`;
+}
+
+/** Draggable vertical split handle. Reports pointer dx so the parent clamps. */
+function PaneSplitter({ onResize, label }: { onResize: (dx: number) => void; label: string }) {
+  const dragging = useRef(false);
+  const lastX = useRef(0);
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    dragging.current = true;
+    lastX.current = e.clientX;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.body.classList.add("reader-resizing");
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return;
+    const dx = e.clientX - lastX.current;
+    lastX.current = e.clientX;
+    if (dx !== 0) onResize(dx);
+  }
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragging.current) return;
+    dragging.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    document.body.classList.remove("reader-resizing");
+  }
+
+  return (
+    <div
+      className="reader-split"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <span className="reader-split-grip" />
+    </div>
+  );
 }
 
 export function BookReaderPage() {
@@ -32,25 +104,48 @@ export function BookReaderPage() {
   const [activeTab, setActiveTab] = useState<ReaderTabKey>("smart-book");
   const [collapsed, setCollapsed] = useState(false);
   const [aiCollapsed, setAiCollapsed] = useState(false);
-  const [ratio, setRatio] = useState<ReaderRatio>("6:4");
+  const [tocWidth, setTocWidth] = useState(() =>
+    readStoredWidth(TOC_WIDTH_KEY, TOC_DEFAULT, TOC_MIN, TOC_MAX)
+  );
+  const [aiWidth, setAiWidth] = useState(() =>
+    readStoredWidth(AI_WIDTH_KEY, AI_DEFAULT, AI_MIN, AI_MAX)
+  );
   const [zoom, setZoom] = useState(100);
   // PDF physical page is the canonical navigation source of truth.
   const [pdfPage, setPdfPage] = useState(1);
+  const [pageCount, setPageCount] = useState<number | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfSessionId, setPdfSessionId] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const [watermarkStamp, setWatermarkStamp] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
 
+  // Persist pane widths so the layout survives reloads.
+  useEffect(() => {
+    try {
+      localStorage.setItem(TOC_WIDTH_KEY, String(tocWidth));
+    } catch {
+      /* ignore */
+    }
+  }, [tocWidth]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(AI_WIDTH_KEY, String(aiWidth));
+    } catch {
+      /* ignore */
+    }
+  }, [aiWidth]);
+
   // Reset per-book view state when switching books.
   useEffect(() => {
     setActiveChapter(null);
     setActiveTab("smart-book");
     setPdfPage(1);
+    setPageCount(null);
     setNoteOpen(false);
     setPdfError("");
   }, [bookId]);
@@ -65,10 +160,7 @@ export function BookReaderPage() {
   }, [bookId]);
 
   useEffect(() => {
-    setPdfUrl((current) => {
-      if (current) URL.revokeObjectURL(current);
-      return null;
-    });
+    setPdfBlob(null);
     setPdfLoading(false);
     setPdfError("");
     setPdfSessionId(null);
@@ -80,7 +172,6 @@ export function BookReaderPage() {
 
     const pdfFileId = book.pdfFileId;
     let disposed = false;
-    let objectUrl: string | null = null;
 
     async function loadProtectedPdf(savedSessionId?: string | null) {
       const ensured = await studentClient.ensureBookSession(bookId, savedSessionId ?? undefined);
@@ -90,11 +181,7 @@ export function BookReaderPage() {
       setWatermarkStamp(new Date().toLocaleString());
       const blob = await studentClient.getProtectedPdfBlob(bookId, pdfFileId, ensured.sessionId);
       if (disposed) return;
-      objectUrl = URL.createObjectURL(blob);
-      setPdfUrl((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return objectUrl;
-      });
+      setPdfBlob(blob);
     }
 
     async function run() {
@@ -127,7 +214,6 @@ export function BookReaderPage() {
 
     return () => {
       disposed = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [bookId, book?.pdfFileId]);
 
@@ -142,8 +228,10 @@ export function BookReaderPage() {
   if (!book) return <p className="muted reader-state">找不到這本書。</p>;
 
   const chapters: BookChapter[] = book.chapters ?? [];
-  const ratioClass = `ratio-${ratio.replace(":", "-")}`;
   const activeChapterTitle = chapters.find((c) => c.id === safeActiveChapter)?.title ?? null;
+  const activeRatio =
+    (Object.keys(RATIO_AI_WIDTH) as ReaderRatio[]).find((r) => RATIO_AI_WIDTH[r] === aiWidth) ??
+    null;
   const watermarkText = [
     "iBrain 智匯",
     pdfSessionId ? `session ${pdfSessionId}` : "session pending",
@@ -160,8 +248,14 @@ export function BookReaderPage() {
       return;
     }
     const chapter = chapters.find((c) => c.id === chapterId);
-    if (chapter?.pageStart != null) setPdfPage(chapter.pageStart);
+    if (chapter?.pageStart != null) setPdfPage(Math.max(1, chapter.pageStart));
   }
+
+  const prevPage = () => setPdfPage((p) => Math.max(1, p - 1));
+  const nextPage = () =>
+    setPdfPage((p) => (pageCount != null ? Math.min(pageCount, p + 1) : p + 1));
+  const resizeToc = (dx: number) => setTocWidth((w) => clamp(w + dx, TOC_MIN, TOC_MAX));
+  const resizeAi = (dx: number) => setAiWidth((w) => clamp(w - dx, AI_MIN, AI_MAX));
 
   function scrollToChat() {
     setAiCollapsed(false);
@@ -169,12 +263,6 @@ export function BookReaderPage() {
       chatRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
     );
   }
-
-  // Browser-native PDF viewer reads page/zoom from the URL fragment. The iframe
-  // element identity stays stable so changing the hash navigates in place.
-  const pdfSrc = pdfUrl
-    ? `${pdfUrl}#page=${pdfPage}&zoom=${zoom}&toolbar=0&navpanes=0`
-    : "";
 
   return (
     <div className="reader-workbench">
@@ -193,63 +281,63 @@ export function BookReaderPage() {
             onToggleAi={() => setAiCollapsed((v) => !v)}
             zoom={zoom}
             onZoom={setZoom}
-            ratio={ratio}
-            onRatio={setRatio}
+            ratio={activeRatio}
+            onRatio={(r) => setAiWidth(RATIO_AI_WIDTH[r])}
             page={book.pdfFileId ? pdfPage : null}
+            pageCount={pageCount}
+            onPrevPage={prevPage}
+            onNextPage={nextPage}
             onOpenNote={() => setNoteOpen(true)}
             onAskAi={scrollToChat}
           />
 
-          <div
-            className={`reader-main ${ratioClass} ${collapsed ? "toc-collapsed" : ""} ${
-              aiCollapsed ? "ai-collapsed" : ""
-            }`}
-          >
+          <div className="reader-main">
             {!collapsed && (
               <ChapterSidebar
                 chapters={chapters}
                 activeChapter={safeActiveChapter}
                 onSelect={selectChapter}
+                width={tocWidth}
               />
+            )}
+            {!collapsed && (
+              <PaneSplitter onResize={resizeToc} label="調整章節與 PDF 寬度" />
             )}
 
             <section className="reader-pdf-col">
               {!book.pdfFileId ? (
-                <div className="reader-pdf-status">
+                <div className="reader-pdf-status-wrap">
                   <p className="muted">尚未提供 PDF 教材。</p>
                 </div>
               ) : pdfLoading ? (
-                <div className="reader-pdf-status">
+                <div className="reader-pdf-status-wrap">
                   <p className="muted">Loading protected PDF…</p>
                 </div>
               ) : pdfError ? (
-                <div className="reader-pdf-status">
+                <div className="reader-pdf-status-wrap">
                   <p className="error-text">{pdfError}</p>
                 </div>
-              ) : pdfUrl ? (
-                <div className="student-pdf-frame">
-                  <iframe
-                    title={`${book.title} PDF`}
-                    src={pdfSrc}
-                    className="student-pdf-iframe"
-                  />
-                  <div className="student-pdf-watermark" aria-hidden="true">
-                    {PDF_WATERMARK_TILES.map((tile) => (
-                      <span key={tile} className="student-pdf-watermark-item">
-                        {watermarkText}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+              ) : pdfBlob ? (
+                <ProtectedPdfViewer
+                  blob={pdfBlob}
+                  page={pdfPage}
+                  zoom={zoom}
+                  watermarkText={watermarkText}
+                  onPageCount={setPageCount}
+                  onError={setPdfError}
+                />
               ) : (
-                <div className="reader-pdf-status">
+                <div className="reader-pdf-status-wrap">
                   <p className="muted">Protected PDF preview is not ready.</p>
                 </div>
               )}
             </section>
 
             {!aiCollapsed && (
-              <div className="reader-chat-col" ref={chatRef}>
+              <PaneSplitter onResize={resizeAi} label="調整 PDF 與 AI 寬度" />
+            )}
+            {!aiCollapsed && (
+              <div className="reader-chat-col" ref={chatRef} style={{ width: aiWidth }}>
                 <ChatPanel
                   bookId={bookId}
                   chapterId={safeActiveChapter ?? undefined}

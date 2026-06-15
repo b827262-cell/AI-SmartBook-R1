@@ -1,17 +1,25 @@
 import type { BookChapter } from "@ai-smartbook/schema";
 
-/** PDF area vs AI area width ratio. PDF is the first value. */
+/** Quick layout preset: PDF area vs AI area. PDF is the first value. */
 export type ReaderRatio = "6:4" | "1:1" | "4:6";
 
 export const READER_RATIOS: ReaderRatio[] = ["6:4", "1:1", "4:6"];
 
-/** Discrete zoom percentages applied to the PDF viewer. Default is 100. */
-export const ZOOM_OPTIONS = [75, 90, 100, 110, 125, 150];
+/** AI pane width (px) each ratio preset maps to (within the AI min/max range). */
+export const RATIO_AI_WIDTH: Record<ReaderRatio, number> = {
+  "6:4": 320,
+  "1:1": 440,
+  "4:6": 560
+};
+
+/** Discrete zoom percentages applied to the PDF.js render scale. Default 100. */
+export const ZOOM_OPTIONS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
 
 /**
  * PDF-native reader toolbar. Every control drives the protected PDF viewer
- * state (chapter page jump, zoom, layout ratio, collapse) rather than the old
- * MD/text reader. It does not fetch or render the PDF itself.
+ * state (chapter page jump, page step, render zoom, layout, collapse). The
+ * ratio buttons are quick presets for the AI pane width; users can also drag
+ * the split handles for fine control.
  */
 export function PdfReaderToolbar({
   chapters,
@@ -26,6 +34,9 @@ export function PdfReaderToolbar({
   ratio,
   onRatio,
   page,
+  pageCount,
+  onPrevPage,
+  onNextPage,
   onOpenNote,
   onAskAi
 }: {
@@ -38,12 +49,19 @@ export function PdfReaderToolbar({
   onToggleAi: () => void;
   zoom: number;
   onZoom: (zoom: number) => void;
-  ratio: ReaderRatio;
+  ratio: ReaderRatio | null;
   onRatio: (ratio: ReaderRatio) => void;
   page: number | null;
+  pageCount: number | null;
+  onPrevPage: () => void;
+  onNextPage: () => void;
   onOpenNote: () => void;
   onAskAi: () => void;
 }) {
+  const hasPdf = page != null;
+  const atFirst = page == null || page <= 1;
+  const atLast = page == null || (pageCount != null && page >= pageCount);
+
   return (
     <div className="pdf-toolbar">
       <button type="button" className="tool-btn" onClick={onToggleToc}>
@@ -65,9 +83,18 @@ export function PdfReaderToolbar({
         ))}
       </select>
 
-      <span className="tool-page" title="目前 PDF 實體頁">
-        {page != null ? `P${page}` : "—"}
-      </span>
+      <div className="tool-pagenav" title="PDF 實體頁導覽">
+        <button type="button" className="tool-btn" onClick={onPrevPage} disabled={atFirst}>
+          ◀
+        </button>
+        <span className="tool-page">
+          {hasPdf ? `P${page}` : "—"}
+          {pageCount != null ? ` / ${pageCount}` : ""}
+        </span>
+        <button type="button" className="tool-btn" onClick={onNextPage} disabled={atLast}>
+          ▶
+        </button>
+      </div>
 
       <label className="tool-zoom">
         <span className="tool-zoom-label">縮放</span>
@@ -90,7 +117,7 @@ export function PdfReaderToolbar({
 
       <span className="tool-spacer" />
 
-      <div className="tool-ratio" title="PDF 與 AI 區域比例">
+      <div className="tool-ratio" title="PDF 與 AI 區域比例（快速調整 AI 寬度）">
         {READER_RATIOS.map((r) => (
           <button
             key={r}
