@@ -9,6 +9,7 @@ import {
   splitBookIntoChapters,
   buildChaptersFromContents,
   buildChaptersFromPdfOutline,
+  linkChaptersByPageRange,
   summarizeChapter,
   askBookQuestion,
   type BookCoreContext
@@ -185,9 +186,13 @@ function findManualQaAnswer(bookId: string, question: string) {
   return best && best.score >= 0.72 ? best : null;
 }
 
-function keywordChat(question: string, bookId: string) {
+function keywordChat(question: string, bookId: string, chapterId?: string | null) {
   const tokens = tokenizeQuestion(question);
-  const contents = repos.contents.findByBookId(bookId);
+  const all = repos.contents.findByBookId(bookId);
+  // Scope to the chapter's linked content when a chapter is selected and has
+  // linked content; otherwise fall back to whole-book search.
+  const scoped = chapterId ? all.filter((c) => c.chapterId === chapterId) : [];
+  const contents = scoped.length > 0 ? scoped : all;
 
   if (tokens.length === 0 || contents.length === 0) {
     return {
@@ -569,8 +574,29 @@ app.delete("/api/admin/books/:bookId/contents", (req, res) => {
 });
 
 // ---- Chapters -------------------------------------------------------------
+/** Compute a chapter's content-link status from the book's parsed contents. */
+function enrichChapters(bookId: string) {
+  const chapters = repos.chapters.findByBookId(bookId);
+  const contents = repos.contents.findByBookId(bookId);
+  const bookHasContent = contents.length > 0;
+  return chapters.map((c) => {
+    const linkedContentCount = contents.filter((ct) => ct.chapterId === c.id).length;
+    let contentLinkStatus: string;
+    if (!bookHasContent) {
+      contentLinkStatus = "missing_content";
+    } else if (c.pageStart != null && c.pageEnd != null && c.pageEnd < c.pageStart) {
+      contentLinkStatus = "page_range_invalid";
+    } else if (linkedContentCount > 0) {
+      contentLinkStatus = "linked";
+    } else {
+      contentLinkStatus = "unlinked";
+    }
+    return { ...c, contentLinkStatus, linkedContentCount };
+  });
+}
+
 app.get("/api/admin/books/:bookId/chapters", (req, res) => {
-  res.json({ chapters: repos.chapters.findByBookId(req.params.bookId) });
+  res.json({ chapters: enrichChapters(req.params.bookId) });
 });
 
 app.post("/api/admin/books/:bookId/chapters", (req, res) => {
@@ -588,6 +614,42 @@ app.patch("/api/admin/books/:bookId/chapters/:chapterId", (req, res) => {
   const chapter = repos.chapters.update(req.params.chapterId, parsed.data);
   if (!chapter) return fail(res, 404, "chapter not found");
   res.json({ chapter });
+});
+
+app.delete("/api/admin/books/:bookId/chapters/:chapterId", (req, res) => {
+  const chapter = repos.chapters.findById(req.params.chapterId);
+  if (!chapter || chapter.bookId !== req.params.bookId) return fail(res, 404, "chapter not found");
+  // Detach any content linked to this chapter, then remove it.
+  for (const c of repos.contents.findByChapterId(chapter.id)) {
+    repos.contents.linkChapter(c.id, null);
+  }
+  repos.chapters.deleteById(chapter.id);
+  res.json({ deleted: true });
+});
+
+// Idempotent rebuild: clear existing chapters + links, rebuild from outline
+// (or content fallback), then link content by page range.
+app.post("/api/admin/books/:bookId/chapters/build", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  try {
+    repos.contents.unlinkChaptersByBookId(book.id);
+    repos.chapters.deleteByBookId(book.id);
+    const fromOutline = await buildChaptersFromPdfOutline(ctx, book.id);
+    if (fromOutline.length === 0) await buildChaptersFromContents(ctx, book.id);
+    linkChaptersByPageRange(ctx, book.id);
+    res.json({ chapters: enrichChapters(book.id) });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "build chapters failed");
+  }
+});
+
+// Re-link parsed content to chapters by page range (idempotent).
+app.post("/api/admin/books/:bookId/chapters/link-content", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const linked = linkChaptersByPageRange(ctx, book.id);
+  res.json({ linked, chapters: enrichChapters(book.id) });
 });
 
 // ---- AI modules -----------------------------------------------------------
@@ -616,9 +678,10 @@ app.post("/api/admin/books/:bookId/ai/build-chapters", async (req, res) => {
 
       // Prefer the PDF's built-in outline / bookmarks when available.
       const fromOutline = await buildChaptersFromPdfOutline(ctx, book.id);
-      if (fromOutline.length > 0) return fromOutline;
-      // Fallback: deterministic content-row grouping.
-      return buildChaptersFromContents(ctx, book.id);
+      const built = fromOutline.length > 0 ? fromOutline : await buildChaptersFromContents(ctx, book.id);
+      // Re-link content by page range so chapters report an accurate status.
+      linkChaptersByPageRange(ctx, book.id);
+      return built;
     });
     res.json({ job, chapters: result });
   } catch (err) {
@@ -741,6 +804,31 @@ app.post("/api/student/books/:bookId/chat", (req, res) => {
     }).id;
   }
 
+  // When a chapter is selected but has no linked content, tell the student to
+  // re-link it in the admin instead of silently searching the whole book.
+  const chapterId = parsed.data.chapterId;
+  if (chapterId) {
+    const chapter = repos.chapters.findById(chapterId);
+    const chapterLinked =
+      chapter && chapter.bookId === book.id
+        ? repos.contents.findByChapterId(chapterId).length > 0
+        : false;
+    if (chapter && chapter.bookId === book.id && !chapterLinked) {
+      const notice = "此章尚未建立可問答內容，請回後台重新連結內容。";
+      repos.chat.addMessage({ sessionId, role: "user", content: question });
+      repos.chat.addMessage({ sessionId, role: "assistant", content: notice });
+      return res.json({
+        sessionId,
+        answer: notice,
+        chatMode: "chapter-unlinked",
+        source: "chapter_unlinked",
+        provider: "system",
+        model: "local",
+        messages: repos.chat.findMessages(sessionId)
+      });
+    }
+  }
+
   const manualAnswer = findManualQaAnswer(book.id, question);
   const result = manualAnswer
     ? {
@@ -752,9 +840,9 @@ app.post("/api/student/books/:bookId/chat", (req, res) => {
         matchedQuestion: manualAnswer.question
       }
     : {
-        ...keywordChat(question, book.id),
+        ...keywordChat(question, book.id, chapterId),
         chatMode: "keyword",
-        source: "book_contents",
+        source: chapterId ? "chapter_contents" : "book_contents",
         provider: "keyword",
         model: "local"
       };

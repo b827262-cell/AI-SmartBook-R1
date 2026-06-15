@@ -12,7 +12,11 @@ import { newId, nowIso } from "./util";
 type Row = typeof bookChapters.$inferSelect;
 
 function toChapter(row: Row): BookChapter {
-  return { ...row, status: row.status as BookStatus };
+  return {
+    ...row,
+    status: row.status as BookStatus,
+    source: row.source as BookChapter["source"]
+  };
 }
 
 function buildRow(input: CreateChapterInput): Row {
@@ -25,6 +29,8 @@ function buildRow(input: CreateChapterInput): Row {
     orderIndex: input.orderIndex,
     pageStart: input.pageStart ?? null,
     pageEnd: input.pageEnd ?? null,
+    level: input.level ?? 0,
+    source: input.source ?? "manual",
     status: input.status ?? "draft",
     createdAt: ts,
     updatedAt: ts
@@ -66,6 +72,11 @@ export function makeChapterRepo(db: Db) {
       db.delete(bookChapters).where(eq(bookChapters.bookId, bookId)).run();
     },
 
+    /** Remove a single chapter. */
+    deleteById(id: string): void {
+      db.delete(bookChapters).where(eq(bookChapters.id, id)).run();
+    },
+
     update(id: string, input: UpdateChapterInput): BookChapter | null {
       const patch: Partial<Row> = { updatedAt: nowIso() };
       if (input.title !== undefined) patch.title = input.title;
@@ -73,6 +84,8 @@ export function makeChapterRepo(db: Db) {
       if (input.orderIndex !== undefined) patch.orderIndex = input.orderIndex;
       if (input.pageStart !== undefined) patch.pageStart = input.pageStart ?? null;
       if (input.pageEnd !== undefined) patch.pageEnd = input.pageEnd ?? null;
+      if (input.level !== undefined) patch.level = input.level;
+      if (input.source !== undefined) patch.source = input.source;
       if (input.status !== undefined) patch.status = input.status;
       db.update(bookChapters).set(patch).where(eq(bookChapters.id, id)).run();
       const row = db.select().from(bookChapters).where(eq(bookChapters.id, id)).get();

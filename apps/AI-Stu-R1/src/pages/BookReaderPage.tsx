@@ -103,6 +103,7 @@ export function BookReaderPage() {
           <div className="reader-chat-col" ref={chatRef}>
             <ChatPanel
               bookId={bookId}
+              chapterId={safeActiveChapter ?? undefined}
               title="AI 問答"
               subtitle="點擊左側章節可限定提問範圍"
               quickPrompts={QUICK_PROMPTS}

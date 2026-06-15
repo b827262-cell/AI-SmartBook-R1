@@ -19,12 +19,14 @@ function sessionKey(bookId: string): string {
  */
 export function ChatPanel({
   bookId,
+  chapterId,
   title,
   subtitle,
   quickPrompts = [],
   inputPlaceholder
 }: {
   bookId: string;
+  chapterId?: string;
   title?: string;
   subtitle?: string;
   quickPrompts?: string[];
@@ -69,7 +71,8 @@ export function ChatPanel({
     try {
       const r = await studentClient.sendBookChat(bookId, {
         message: text,
-        sessionId: sessionId ?? undefined
+        sessionId: sessionId ?? undefined,
+        chapterId: chapterId ?? undefined
       });
       setSessionId(r.sessionId);
       localStorage.setItem(sessionKey(bookId), r.sessionId);

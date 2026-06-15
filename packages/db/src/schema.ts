@@ -43,6 +43,8 @@ export const bookChapters = sqliteTable("book_chapters", {
   orderIndex: integer("order_index").notNull().default(0),
   pageStart: integer("page_start"),
   pageEnd: integer("page_end"),
+  level: integer("level").notNull().default(0),
+  source: text("source").notNull().default("manual"),
   status: text("status").notNull().default("draft"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()

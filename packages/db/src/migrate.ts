@@ -42,6 +42,8 @@ const STATEMENTS = [
     order_index INTEGER NOT NULL DEFAULT 0,
     page_start INTEGER,
     page_end INTEGER,
+    level INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'manual',
     status TEXT NOT NULL DEFAULT 'draft',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -139,6 +141,8 @@ export function runMigrations(sqlite: Database.Database): void {
     addColumnIfMissing(sqlite, "chat_sessions", "device_type", "device_type TEXT");
     addColumnIfMissing(sqlite, "chat_sessions", "device_vendor", "device_vendor TEXT");
     addColumnIfMissing(sqlite, "chat_sessions", "device_model", "device_model TEXT");
+    addColumnIfMissing(sqlite, "book_chapters", "level", "level INTEGER NOT NULL DEFAULT 0");
+    addColumnIfMissing(sqlite, "book_chapters", "source", "source TEXT NOT NULL DEFAULT 'manual'");
   });
   tx();
 }

@@ -56,6 +56,60 @@ export async function extractPdfOutline(
   }
 }
 
+/**
+ * Parse a page range embedded in an outline title, e.g. "01－1～37第1章" or
+ * "000前1～2自序" -> { pageStart: 1, pageEnd: 37 }. Returns nulls when no range
+ * is found. Handles half/full-width tildes and dashes.
+ */
+export function parsePageRangeFromTitle(title: string): {
+  pageStart: number | null;
+  pageEnd: number | null;
+} {
+  // Prefer a tilde-style range ("1～37") which denotes the real page span; a
+  // leading "01－" section code uses a dash, so try tildes before dashes.
+  const range =
+    title.match(/(\d{1,4})\s*[~～〜]\s*(\d{1,4})/) ||
+    title.match(/(\d{1,4})\s*[\-－—]\s*(\d{1,4})/);
+  if (range) {
+    const a = Number.parseInt(range[1], 10);
+    const b = Number.parseInt(range[2], 10);
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      return { pageStart: a, pageEnd: Math.max(a, b) };
+    }
+  }
+  const single = title.match(/(\d{1,4})/);
+  if (single) {
+    const a = Number.parseInt(single[1], 10);
+    if (Number.isFinite(a)) return { pageStart: a, pageEnd: null };
+  }
+  return { pageStart: null, pageEnd: null };
+}
+
+/**
+ * Re-link every parsed content row to the chapter whose page range contains it.
+ * Clears existing links first so it is idempotent. Returns the linked count.
+ */
+export function linkChaptersByPageRange(ctx: BookCoreContext, bookId: string): number {
+  ctx.repos.contents.unlinkChaptersByBookId(bookId);
+  const chapters = ctx.repos.chapters.findByBookId(bookId);
+  const contents = ctx.repos.contents.findByBookId(bookId);
+  let linked = 0;
+  for (const content of contents) {
+    if (content.pageNumber == null) continue;
+    const ch = chapters.find(
+      (c) =>
+        c.pageStart != null &&
+        content.pageNumber! >= c.pageStart &&
+        (c.pageEnd == null || content.pageNumber! <= c.pageEnd)
+    );
+    if (ch) {
+      ctx.repos.contents.linkChapter(content.id, ch.id);
+      linked += 1;
+    }
+  }
+  return linked;
+}
+
 // ---------------------------------------------------------------------------
 // Build chapters from PDF outline
 // ---------------------------------------------------------------------------
@@ -83,10 +137,16 @@ export async function buildChaptersFromPdfOutline(
   const chapters = ctx.repos.chapters.createMany(
     topLevel.map((entry, idx) => {
       const nextEntry = topLevel[idx + 1];
-      const pageStart = entry.pageNumber;
-      const pageEnd = nextEntry?.pageNumber
-        ? nextEntry.pageNumber - 1
-        : null;
+      // Prefer the outline's destination page; otherwise parse the page range
+      // out of the title text so the page number is structured (not just text).
+      const parsed = parsePageRangeFromTitle(entry.title);
+      const pageStart = entry.pageNumber ?? parsed.pageStart;
+      const pageEnd =
+        entry.pageNumber != null
+          ? nextEntry?.pageNumber
+            ? nextEntry.pageNumber - 1
+            : null
+          : parsed.pageEnd;
       return {
         bookId,
         title: entry.title,
@@ -94,6 +154,8 @@ export async function buildChaptersFromPdfOutline(
         orderIndex: idx,
         pageStart,
         pageEnd,
+        level: entry.level,
+        source: "pdf_outline" as const,
         status: "draft" as const
       };
     })
@@ -153,6 +215,8 @@ export async function buildChaptersFromContents(
         orderIndex: idx,
         pageStart: pages.length ? Math.min(...pages) : null,
         pageEnd: pages.length ? Math.max(...pages) : null,
+        level: 0,
+        source: "fallback" as const,
         status: "draft" as const
       };
     })

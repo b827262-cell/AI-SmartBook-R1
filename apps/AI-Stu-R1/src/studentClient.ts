@@ -45,7 +45,10 @@ export const studentClient = {
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/student/books/${bookId}/contents`),
 
-  sendBookChat: (bookId: string, body: { message: string; sessionId?: string }) =>
+  sendBookChat: (
+    bookId: string,
+    body: { message: string; sessionId?: string; chapterId?: string }
+  ) =>
     http<ChatResponse>(`/api/student/books/${bookId}/chat`, {
       method: "POST",
       body: JSON.stringify(body)

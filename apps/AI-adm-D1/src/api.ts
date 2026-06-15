@@ -1,4 +1,5 @@
 import type {
+  AdminChapter,
   AppearanceSettings,
   AppearanceSettingsUpdate,
   Book,
@@ -10,6 +11,15 @@ import type {
   CreateBookInput,
   UpdateBookInput
 } from "@ai-smartbook/schema";
+
+export interface ChapterInput {
+  title: string;
+  orderIndex: number;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  level?: number;
+  summary?: string | null;
+}
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -75,12 +85,35 @@ export const adminApi = {
     }),
 
   getChapters: (bookId: string) =>
-    http<{ chapters: BookChapter[] }>(`/api/admin/books/${bookId}/chapters`),
+    http<{ chapters: AdminChapter[] }>(`/api/admin/books/${bookId}/chapters`),
 
   generateChapters: (bookId: string) =>
-    http<{ chapters: BookChapter[] }>(`/api/admin/books/${bookId}/ai/build-chapters`, {
+    http<{ chapters: AdminChapter[] }>(`/api/admin/books/${bookId}/chapters/build`, {
       method: "POST",
       body: JSON.stringify({})
+    }),
+
+  linkChapterContent: (bookId: string) =>
+    http<{ linked: number; chapters: AdminChapter[] }>(
+      `/api/admin/books/${bookId}/chapters/link-content`,
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  createChapter: (bookId: string, input: ChapterInput) =>
+    http<{ chapter: BookChapter }>(`/api/admin/books/${bookId}/chapters`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    }),
+
+  updateChapter: (bookId: string, chapterId: string, input: Partial<ChapterInput>) =>
+    http<{ chapter: BookChapter }>(`/api/admin/books/${bookId}/chapters/${chapterId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    }),
+
+  deleteChapter: (bookId: string, chapterId: string) =>
+    http<{ deleted: boolean }>(`/api/admin/books/${bookId}/chapters/${chapterId}`, {
+      method: "DELETE"
     }),
 
   summarizeChapter: (bookId: string, chapterId: string) =>

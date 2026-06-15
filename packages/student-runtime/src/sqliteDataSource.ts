@@ -63,6 +63,8 @@ function toChapter(r: ChapterRow): BookChapter {
     orderIndex: r.order_index,
     pageStart: r.page_start,
     pageEnd: r.page_end,
+    level: 0,
+    source: "manual",
     status: r.status as BookChapter["status"],
     createdAt: r.created_at,
     updatedAt: r.updated_at

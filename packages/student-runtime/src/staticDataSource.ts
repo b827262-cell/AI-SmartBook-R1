@@ -24,6 +24,8 @@ const DEMO_CHAPTERS: BookChapter[] = [
     orderIndex: 0,
     pageStart: 1,
     pageEnd: 3,
+    level: 0,
+    source: "manual",
     status: "published",
     createdAt: now,
     updatedAt: now

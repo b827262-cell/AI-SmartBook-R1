@@ -68,6 +68,7 @@ export type ChatRequest = z.infer<typeof chatRequestSchema>;
 export const studentChatRequestSchema = z.object({
   message: z.string().optional(),
   question: z.string().optional(),
-  sessionId: z.string().optional()
+  sessionId: z.string().optional(),
+  chapterId: z.string().optional()
 });
 export type StudentChatRequest = z.infer<typeof studentChatRequestSchema>;
