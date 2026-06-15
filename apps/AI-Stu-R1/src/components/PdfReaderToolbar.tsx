@@ -25,6 +25,8 @@ export function PdfReaderToolbar({
   chapters,
   activeChapter,
   onSelectChapter,
+  fullWidth,
+  onToggleFullWidth,
   tocCollapsed,
   onToggleToc,
   aiCollapsed,
@@ -43,6 +45,8 @@ export function PdfReaderToolbar({
   chapters: BookChapter[];
   activeChapter: string | null;
   onSelectChapter: (chapterId: string | null) => void;
+  fullWidth: boolean;
+  onToggleFullWidth: () => void;
   tocCollapsed: boolean;
   onToggleToc: () => void;
   aiCollapsed: boolean;
@@ -66,6 +70,15 @@ export function PdfReaderToolbar({
     <div className="pdf-toolbar">
       <button type="button" className="tool-btn" onClick={onToggleToc}>
         {tocCollapsed ? "▸ 展開章節" : "◂ 收合章節"}
+      </button>
+
+      <button
+        type="button"
+        className={`tool-btn ${fullWidth ? "active" : ""}`}
+        onClick={onToggleFullWidth}
+        title="切換閱讀器滿版 / 一般寬度"
+      >
+        {fullWidth ? "滿版" : "一般"}
       </button>
 
       <select

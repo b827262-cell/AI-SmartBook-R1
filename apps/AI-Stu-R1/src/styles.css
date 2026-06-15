@@ -493,7 +493,35 @@ a { color: var(--primary); text-decoration: none; }
 }
 
 /* ===== Reader workbench (/books/:bookId) ================================== */
-.reader-workbench { max-width: 1280px; margin: 0 auto; }
+.reader-outer-layout {
+  --reader-left-gutter: 80px;
+  --reader-right-gutter: 80px;
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--reader-left-gutter))
+    14px
+    minmax(0, 1fr)
+    14px
+    minmax(0, var(--reader-right-gutter));
+  align-items: stretch;
+  width: calc(100vw - 40px);
+  margin-left: calc(50% - 50vw + 20px);
+  margin-right: calc(50% - 50vw + 20px);
+}
+.reader-workbench {
+  min-width: 0;
+  margin: 0;
+}
+.reader-outer-gutter {
+  min-width: 0;
+  border-radius: 16px;
+}
+.reader-outer-gutter.left {
+  background: linear-gradient(90deg, rgba(238, 245, 251, 0), rgba(238, 245, 251, 0.45));
+}
+.reader-outer-gutter.right {
+  background: linear-gradient(90deg, rgba(238, 245, 251, 0.45), rgba(238, 245, 251, 0));
+}
 .reader-state { padding: 40px 0; }
 
 .student-pdf-card {
@@ -615,6 +643,14 @@ a { color: var(--primary); text-decoration: none; }
   flex: 0 0 14px; align-self: stretch; position: relative;
   cursor: col-resize; touch-action: none; background: transparent;
 }
+.reader-split.outer {
+  display: block;
+  min-height: calc(100vh - 112px);
+}
+.reader-split.outer .reader-split-grip {
+  height: 88px;
+  background: rgba(17, 113, 223, 0.26);
+}
 .reader-split-grip {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 2px; height: 48px; border-radius: 2px; background: var(--border);
@@ -661,6 +697,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
 }
 .tool-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tool-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .tool-btn.ask { margin-left: auto; background: var(--primary); color: #fff; border-color: var(--primary); }
 .tool-page { font-size: 13px; color: var(--muted); }
 .tool-ratio { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -749,6 +786,13 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
 .tab-placeholder-card h3 { margin: 0 0 8px; }
 
 @media (max-width: 1024px) {
+  .reader-outer-layout {
+    display: block;
+    width: auto;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .reader-outer-gutter { display: none; }
   .reader-main { flex-direction: column; height: auto; overflow: visible; }
   /* Stack panes; drag handles and explicit widths do not apply on mobile. */
   .reader-split { display: none; }
