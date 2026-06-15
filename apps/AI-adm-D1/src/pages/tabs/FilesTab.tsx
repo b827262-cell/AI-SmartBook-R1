@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   BookFile,
   ChapterPreviewApplyStatus,
   ChapterPreviewEntryType,
-  ChapterPreviewRow
+  ChapterPreviewRow,
+  PdfJsonIndex,
+  PdfJsonIndexLevel
 } from "@ai-smartbook/schema";
 import { adminApi } from "../../api";
 
@@ -16,6 +18,14 @@ const ENTRY_TYPE_OPTIONS: ChapterPreviewEntryType[] = [
   "back_matter",
   "group",
   "unknown"
+];
+
+const JSON_INDEX_LEVEL_OPTIONS: Array<{ value: PdfJsonIndexLevel; label: string }> = [
+  { value: "page", label: "簡單：分頁數" },
+  { value: "chapter", label: "進階：分章節" },
+  { value: "clause", label: "複雜：分逗號" },
+  { value: "line", label: "高階：分行" },
+  { value: "sentence", label: "頂級：分句" }
 ];
 
 type FileRowKind = "pdf_source" | "reference_image" | "misclassified_image" | "unsupported_source";
@@ -61,11 +71,11 @@ export function FilesTab({ bookId }: { bookId: string }) {
   const [previewRows, setPreviewRows] = useState<ChapterPreviewRow[]>([]);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [previewPageCount, setPreviewPageCount] = useState(0);
-  const [referenceTargetFileId, setReferenceTargetFileId] = useState<string | null>(null);
-  const [selectedReferenceImageId, setSelectedReferenceImageId] = useState<string | null>(null);
+  const [jsonLevels, setJsonLevels] = useState<Record<string, PdfJsonIndexLevel>>({});
+  const [generatedIndex, setGeneratedIndex] = useState<PdfJsonIndex | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const referenceInputRef = useRef<HTMLInputElement>(null);
   const previewSectionRef = useRef<HTMLDivElement>(null);
+  const jsonResultRef = useRef<HTMLDivElement>(null);
 
   async function reload() {
     const data = await adminApi.getBook(bookId);
@@ -76,27 +86,11 @@ export function FilesTab({ bookId }: { bookId: string }) {
     void reload().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [bookId]);
 
-  const pdfFiles = files.filter((file) => getFileRowKind(file) === "pdf_source");
-  const referenceImages = files.filter((file) => file.role === "reference_image");
   const previewFile = previewFileId ? files.find((file) => file.id === previewFileId) ?? null : null;
-  const previewReferenceImages = previewFileId
-    ? referenceImages.filter((file) => file.relatedFileId === previewFileId)
-    : [];
-  const selectedReferenceImage =
-    previewReferenceImages.find((file) => file.id === selectedReferenceImageId) ??
-    previewReferenceImages[0] ??
-    null;
-
-  useEffect(() => {
-    if (!previewFileId) return;
-    if (previewReferenceImages.length === 0) {
-      if (selectedReferenceImageId != null) setSelectedReferenceImageId(null);
-      return;
-    }
-    if (!selectedReferenceImage || selectedReferenceImage.relatedFileId !== previewFileId) {
-      setSelectedReferenceImageId(previewReferenceImages[0]?.id ?? null);
-    }
-  }, [previewFileId, previewReferenceImages, selectedReferenceImage, selectedReferenceImageId]);
+  const generatedJsonText = useMemo(
+    () => (generatedIndex ? JSON.stringify(generatedIndex, null, 2) : ""),
+    [generatedIndex]
+  );
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -127,30 +121,6 @@ export function FilesTab({ bookId }: { bookId: string }) {
     });
   }
 
-  function openReferenceUpload(fileId: string) {
-    setReferenceTargetFileId(fileId);
-    referenceInputRef.current?.click();
-  }
-
-  async function onReferenceUploadChange() {
-    const file = referenceInputRef.current?.files?.[0];
-    const targetFileId = referenceTargetFileId;
-    if (!file || !targetFileId) return;
-    await run(async () => {
-      await adminApi.uploadFile(bookId, file, {
-        role: "reference_image",
-        relatedFileId: targetFileId
-      });
-      setMsg(`Uploaded reference image: ${file.name}`);
-      if (referenceInputRef.current) referenceInputRef.current.value = "";
-      setReferenceTargetFileId(null);
-      await reload();
-      if (previewFileId === targetFileId) {
-        setSelectedReferenceImageId(null);
-      }
-    });
-  }
-
   async function onParseContent(fileId: string) {
     await run(async () => {
       const result = await adminApi.parseContent(bookId, fileId);
@@ -165,7 +135,6 @@ export function FilesTab({ bookId }: { bookId: string }) {
       setPreviewFileId(fileId);
       setPreviewPageCount(result.pageCount);
       setPreviewRows(result.rows.map(withApplyStatus));
-      setSelectedReferenceImageId(null);
       setMsg(
         result.rows.length > 0
           ? `Loaded outline preview with ${result.rows.length} rows from ${result.pageCount} PDF pages.`
@@ -178,41 +147,17 @@ export function FilesTab({ bookId }: { bookId: string }) {
     });
   }
 
-  async function onAttachAsReferenceImage(file: BookFile) {
-    if (!isImageFile(file)) return;
-    if (pdfFiles.length === 0) {
-      setError("Upload a PDF source file before attaching reference images.");
-      setMsg("");
-      return;
-    }
-
-    let relatedFileId = pdfFiles[0]?.id ?? "";
-    if (pdfFiles.length > 1) {
-      const promptText = [
-        `Attach "${file.fileName}" as a reference image.`,
-        "Enter the target PDF file id from this list:",
-        ...pdfFiles.map((pdf) => `${pdf.id} :: ${pdf.fileName}`)
-      ].join("\n");
-      const selected = window.prompt(promptText, relatedFileId)?.trim() ?? "";
-      relatedFileId = selected;
-    }
-
-    const targetPdf = pdfFiles.find((pdf) => pdf.id === relatedFileId);
-    if (!targetPdf) {
-      setError("A valid target PDF file id is required to attach this reference image.");
-      setMsg("");
-      return;
-    }
-
+  async function onGenerateJsonIndex(fileId: string) {
+    const level = jsonLevels[fileId] ?? "page";
     await run(async () => {
-      await adminApi.attachAsReferenceImage(bookId, file.id, targetPdf.id);
-      setMsg(`Attached "${file.fileName}" to PDF "${targetPdf.fileName}" as a reference image.`);
-      if (previewFileId === file.id) {
-        setPreviewFileId(null);
-        setPreviewRows([]);
-        setPreviewPageCount(0);
-      }
-      await reload();
+      const result = await adminApi.generateJsonIndex(bookId, fileId, level);
+      setGeneratedIndex(result.index);
+      setMsg(
+        `Generated ${result.index.level} JSON index with ${result.index.itemCount} items from ${result.index.pageCount} PDF pages.`
+      );
+      setTimeout(() => {
+        jsonResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
     });
   }
 
@@ -226,20 +171,32 @@ export function FilesTab({ bookId }: { bookId: string }) {
         setPreviewFileId(null);
         setPreviewRows([]);
         setPreviewPageCount(0);
-        setSelectedReferenceImageId(null);
+      }
+      if (generatedIndex?.fileId === fileId) {
+        setGeneratedIndex(null);
       }
       await reload();
     });
   }
 
-  function onViewReferenceImage(fileId: string) {
-    const firstReference = referenceImages.find((file) => file.relatedFileId === fileId);
-    if (!firstReference) return;
-    window.open(adminApi.getBookFileUrl(bookId, firstReference.id), "_blank", "noopener,noreferrer");
+  function onViewJsonResult(fileId: string) {
+    if (generatedIndex?.fileId !== fileId) return;
+    jsonResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function onViewImageFile(fileId: string) {
     window.open(adminApi.getBookFileUrl(bookId, fileId), "_blank", "noopener,noreferrer");
+  }
+
+  function onDownloadJsonResult(fileId: string) {
+    if (generatedIndex?.fileId !== fileId) return;
+    const blob = new Blob([JSON.stringify(generatedIndex, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${generatedIndex.fileName.replace(/\.pdf$/i, "")}-${generatedIndex.level}-index.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function updateRow(index: number, next: ChapterPreviewRow) {
@@ -315,13 +272,6 @@ export function FilesTab({ bookId }: { bookId: string }) {
             Upload
           </button>
         </div>
-        <input
-          ref={referenceInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          style={{ display: "none" }}
-          onChange={() => void onReferenceUploadChange()}
-        />
         {msg && <p className="muted">{msg}</p>}
         {error && <p className="error">{error}</p>}
       </div>
@@ -350,14 +300,13 @@ export function FilesTab({ bookId }: { bookId: string }) {
                     file.relatedFileId != null
                       ? files.find((candidate) => candidate.id === file.relatedFileId) ?? null
                       : null;
-                  const fileReferenceCount = referenceImages.filter(
-                    (candidate) => candidate.relatedFileId === file.id
-                  ).length;
                   const isPdfRow = rowKind === "pdf_source";
                   const isReferenceImageRow = rowKind === "reference_image";
                   const isMisclassifiedImageRow = rowKind === "misclassified_image";
                   const contentActionLabel = file.parseStatus === "parsed" ? "Re-parse Content" : "Parse Content";
                   const outlineActionLabel = file.parseStatus === "parsed" ? "Re-parse Outline" : "Parse Outline";
+                  const selectedJsonLevel = jsonLevels[file.id] ?? "page";
+                  const hasGeneratedJson = generatedIndex?.fileId === file.id;
 
                   return (
                     <tr key={file.id}>
@@ -365,7 +314,12 @@ export function FilesTab({ bookId }: { bookId: string }) {
                         <div>{file.fileName}</div>
                         {isMisclassifiedImageRow ? (
                           <div className="error" style={{ marginTop: 6 }}>
-                            Image file is misclassified as PDF source.
+                            Image file is not a valid PDF parsing source on this page.
+                          </div>
+                        ) : null}
+                        {isReferenceImageRow ? (
+                          <div className="muted" style={{ marginTop: 6 }}>
+                            Legacy reference image row. Upload is removed from this page.
                           </div>
                         ) : null}
                         {rowKind === "unsupported_source" ? (
@@ -412,17 +366,41 @@ export function FilesTab({ bookId }: { bookId: string }) {
                               </button>
                               <button
                                 className="btn secondary"
-                                onClick={() => openReferenceUpload(file.id)}
+                                onClick={() => void onGenerateJsonIndex(file.id)}
                                 disabled={busy}
                               >
-                                Upload Reference Image
+                                Generate JSON Index
+                              </button>
+                              <select
+                                value={selectedJsonLevel}
+                                onChange={(e) =>
+                                  setJsonLevels((current) => ({
+                                    ...current,
+                                    [file.id]: e.target.value as PdfJsonIndexLevel
+                                  }))
+                                }
+                                disabled={busy}
+                                style={{ width: 180 }}
+                              >
+                                {JSON_INDEX_LEVEL_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                className="btn secondary"
+                                onClick={() => onViewJsonResult(file.id)}
+                                disabled={busy || !hasGeneratedJson}
+                              >
+                                View JSON
                               </button>
                               <button
                                 className="btn secondary"
-                                onClick={() => onViewReferenceImage(file.id)}
-                                disabled={busy || fileReferenceCount === 0}
+                                onClick={() => onDownloadJsonResult(file.id)}
+                                disabled={busy || !hasGeneratedJson}
                               >
-                                View Reference Image
+                                Download JSON
                               </button>
                             </>
                           ) : null}
@@ -432,16 +410,16 @@ export function FilesTab({ bookId }: { bookId: string }) {
                               onClick={() => onViewImageFile(file.id)}
                               disabled={busy}
                             >
-                              View Reference Image
+                              View
                             </button>
                           ) : null}
                           {isMisclassifiedImageRow ? (
                             <button
                               className="btn secondary"
-                              onClick={() => void onAttachAsReferenceImage(file)}
+                              onClick={() => onViewImageFile(file.id)}
                               disabled={busy}
                             >
-                              Attach as Reference Image
+                              View
                             </button>
                           ) : null}
                           <button
@@ -483,178 +461,177 @@ export function FilesTab({ bookId }: { bookId: string }) {
           </div>
 
           <p className="muted" style={{ marginTop: 12 }}>
-            Reference images are visual hints for manual correction only. Physical PDF page numbers
-            remain the canonical `pageStart` and `pageEnd`.
+            Physical PDF page numbers remain the canonical `pageStart` and `pageEnd`. Printed labels
+            are display metadata only.
           </p>
 
-          <div className="files-preview-grid">
-            <div className="files-preview-table">
-              <div className="admin-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Enabled</th>
-                      <th>Original PDF Outline Title</th>
-                      <th>Reference Hint</th>
-                      <th>Suggested Chapter Title</th>
-                      <th>Printed Label / Range</th>
-                      <th>PDF Start</th>
-                      <th>PDF End</th>
-                      <th>Entry Type</th>
-                      <th>Sort</th>
-                      <th>Admin Note</th>
-                      <th>Apply Status</th>
-                      <th>Row</th>
+          <div className="files-preview-table">
+            <div className="admin-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Enabled</th>
+                    <th>Original PDF Outline Title</th>
+                    <th>Suggested Chapter Title</th>
+                    <th>Printed Label / Range</th>
+                    <th>PDF Start</th>
+                    <th>PDF End</th>
+                    <th>Entry Type</th>
+                    <th>Sort</th>
+                    <th>Admin Note</th>
+                    <th>Apply Status</th>
+                    <th>Row</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.map((row, index) => (
+                    <tr key={row.id ?? `${row.originalTitle}-${index}`}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          style={{ width: "auto" }}
+                          checked={row.enabled}
+                          onChange={(e) => updateRow(index, { ...row, enabled: e.target.checked })}
+                        />
+                      </td>
+                      <td>
+                        <div style={{ paddingLeft: `${Math.min(row.outlineLevel, 4) * 12}px` }}>
+                          {row.originalTitle || <span className="muted">Manual row</span>}
+                        </div>
+                      </td>
+                      <td>
+                        <input
+                          value={row.suggestedTitle}
+                          onChange={(e) =>
+                            updateRow(index, { ...row, suggestedTitle: e.target.value })
+                          }
+                          placeholder="Chapter title"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={row.printedPageLabel ?? ""}
+                          onChange={(e) =>
+                            updateRow(index, { ...row, printedPageLabel: e.target.value || null })
+                          }
+                          placeholder="Printed page label"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={row.pageStart ?? ""}
+                          onChange={(e) =>
+                            updateRow(index, { ...row, pageStart: parseNullableInt(e.target.value) })
+                          }
+                          placeholder="10"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={row.pageEnd ?? ""}
+                          onChange={(e) =>
+                            updateRow(index, { ...row, pageEnd: parseNullableInt(e.target.value) })
+                          }
+                          placeholder="47"
+                        />
+                      </td>
+                      <td>
+                        <select
+                          value={row.entryType}
+                          onChange={(e) =>
+                            updateRow(index, {
+                              ...row,
+                              entryType: e.target.value as ChapterPreviewEntryType
+                            })
+                          }
+                        >
+                          {ENTRY_TYPE_OPTIONS.map((entryType) => (
+                            <option key={entryType} value={entryType}>
+                              {entryType}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          value={row.sortOrder}
+                          onChange={(e) =>
+                            updateRow(index, {
+                              ...row,
+                              sortOrder: parseNullableInt(e.target.value) ?? row.sortOrder
+                            })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={row.adminNote ?? ""}
+                          onChange={(e) =>
+                            updateRow(index, { ...row, adminNote: e.target.value || null })
+                          }
+                          placeholder="Optional note"
+                        />
+                      </td>
+                      <td>
+                        <span className={`badge ${row.applyStatus === "ready" ? "parsed" : "draft"}`}>
+                          {statusText(row.applyStatus)}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          className="admin-link-btn"
+                          onClick={() => onRemoveRow(index)}
+                          disabled={busy}
+                        >
+                          Remove
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.map((row, index) => (
-                      <tr key={row.id ?? `${row.originalTitle}-${index}`}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            style={{ width: "auto" }}
-                            checked={row.enabled}
-                            onChange={(e) => updateRow(index, { ...row, enabled: e.target.checked })}
-                          />
-                        </td>
-                        <td>
-                          <div style={{ paddingLeft: `${Math.min(row.outlineLevel, 4) * 12}px` }}>
-                            {row.originalTitle || <span className="muted">Manual row</span>}
-                          </div>
-                        </td>
-                        <td>
-                          <input
-                            value={row.referenceTitle ?? ""}
-                            onChange={(e) =>
-                              updateRow(index, { ...row, referenceTitle: e.target.value || null })
-                            }
-                            placeholder="Image note"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={row.suggestedTitle}
-                            onChange={(e) =>
-                              updateRow(index, { ...row, suggestedTitle: e.target.value })
-                            }
-                            placeholder="Chapter title"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={row.printedPageLabel ?? ""}
-                            onChange={(e) =>
-                              updateRow(index, { ...row, printedPageLabel: e.target.value || null })
-                            }
-                            placeholder="Printed page label"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={row.pageStart ?? ""}
-                            onChange={(e) =>
-                              updateRow(index, { ...row, pageStart: parseNullableInt(e.target.value) })
-                            }
-                            placeholder="10"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={row.pageEnd ?? ""}
-                            onChange={(e) =>
-                              updateRow(index, { ...row, pageEnd: parseNullableInt(e.target.value) })
-                            }
-                            placeholder="47"
-                          />
-                        </td>
-                        <td>
-                          <select
-                            value={row.entryType}
-                            onChange={(e) =>
-                              updateRow(index, {
-                                ...row,
-                                entryType: e.target.value as ChapterPreviewEntryType
-                              })
-                            }
-                          >
-                            {ENTRY_TYPE_OPTIONS.map((entryType) => (
-                              <option key={entryType} value={entryType}>
-                                {entryType}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            value={row.sortOrder}
-                            onChange={(e) =>
-                              updateRow(index, {
-                                ...row,
-                                sortOrder: parseNullableInt(e.target.value) ?? row.sortOrder
-                              })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={row.adminNote ?? ""}
-                            onChange={(e) =>
-                              updateRow(index, { ...row, adminNote: e.target.value || null })
-                            }
-                            placeholder="Optional note"
-                          />
-                        </td>
-                        <td>
-                          <span className={`badge ${row.applyStatus === "ready" ? "parsed" : "draft"}`}>
-                            {statusText(row.applyStatus)}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="admin-link-btn"
-                            onClick={() => onRemoveRow(index)}
-                            disabled={busy}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            <aside className="files-reference-panel">
-              <h4 style={{ marginTop: 0 }}>Reference Image</h4>
-              {previewReferenceImages.length === 0 ? (
-                <p className="muted">No reference image attached to this PDF yet.</p>
-              ) : (
-                <>
-                  <select
-                    value={selectedReferenceImage?.id ?? ""}
-                    onChange={(e) => setSelectedReferenceImageId(e.target.value || null)}
-                  >
-                    {previewReferenceImages.map((file) => (
-                      <option key={file.id} value={file.id}>
-                        {file.fileName}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedReferenceImage ? (
-                    <div className="files-reference-frame">
-                      <img
-                        src={adminApi.getBookFileUrl(bookId, selectedReferenceImage.id)}
-                        alt={selectedReferenceImage.fileName}
-                        className="files-reference-image"
-                      />
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </aside>
           </div>
+        </div>
+      ) : null}
+
+      {generatedIndex ? (
+        <div className="card" ref={jsonResultRef}>
+          <div className="row between" style={{ alignItems: "flex-start" }}>
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>JSON Index Result</h3>
+              <p className="muted" style={{ margin: 0 }}>
+                File: <strong>{generatedIndex.fileName}</strong> · Level:{" "}
+                <strong>
+                  {generatedIndex.level} / {generatedIndex.levelLabel}
+                </strong>{" "}
+                · Pages: <strong>{generatedIndex.pageCount}</strong> · Items:{" "}
+                <strong>{generatedIndex.itemCount}</strong>
+              </p>
+            </div>
+            <button
+              className="btn secondary"
+              onClick={() => onDownloadJsonResult(generatedIndex.fileId)}
+              disabled={busy}
+            >
+              Download JSON
+            </button>
+          </div>
+
+          {generatedIndex.notes?.length ? (
+            <div style={{ marginTop: 12 }}>
+              {generatedIndex.notes.map((note) => (
+                <p key={note} className="muted" style={{ margin: "4px 0" }}>
+                  {note}
+                </p>
+              ))}
+            </div>
+          ) : null}
+
+          <details style={{ marginTop: 14 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>View JSON</summary>
+            <pre className="files-json-preview">{generatedJsonText}</pre>
+          </details>
         </div>
       ) : null}
     </div>

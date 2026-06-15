@@ -10,6 +10,8 @@ import type {
   BookFileRole,
   BookQaLog,
   ChapterPreviewRow,
+  GeneratePdfJsonIndexInput,
+  PdfJsonIndex,
   CreateBookInput,
   UpdateBookInput
 } from "@ai-smartbook/schema";
@@ -91,6 +93,12 @@ export const adminApi = {
       { method: "POST", body: JSON.stringify({}) }
     ),
 
+  generateJsonIndex: (bookId: string, fileId: string, level: GeneratePdfJsonIndexInput["level"]) =>
+    http<{ index: PdfJsonIndex }>(`/api/admin/books/${bookId}/files/${fileId}/generate-json-index`, {
+      method: "POST",
+      body: JSON.stringify({ level })
+    }),
+
   applyChapterPreview: (bookId: string, fileId: string, rows: ChapterPreviewRow[]) =>
     http<{ applied: number; skipped: number; linked: number; chapters: AdminChapter[] }>(
       `/api/admin/books/${bookId}/files/${fileId}/apply-chapters`,
@@ -99,12 +107,6 @@ export const adminApi = {
 
   getBookFileUrl: (bookId: string, fileId: string) =>
     `/api/admin/books/${bookId}/files/${fileId}/raw`,
-
-  attachAsReferenceImage: (bookId: string, fileId: string, relatedFileId: string) =>
-    http<{ file: BookFile }>(`/api/admin/books/${bookId}/files/${fileId}/attach-reference-image`, {
-      method: "POST",
-      body: JSON.stringify({ relatedFileId })
-    }),
 
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/admin/books/${bookId}/contents`),

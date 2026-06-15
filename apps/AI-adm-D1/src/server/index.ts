@@ -10,6 +10,7 @@ import {
   buildChaptersFromContents,
   buildChaptersFromPdfOutline,
   buildChapterPreviewRowsFromPdfOutline,
+  buildPdfJsonIndex,
   getChapterPreviewApplyStatus,
   linkChaptersByPageRange,
   summarizeChapter,
@@ -29,6 +30,7 @@ import {
   appearanceSettingsUpdateSchema,
   setRiskLevelInputSchema,
   blockAccountInputSchema,
+  generatePdfJsonIndexInputSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
   type BookFile,
@@ -823,6 +825,36 @@ app.post("/api/admin/books/:bookId/files/:fileId/outline-preview", async (req, r
   } catch (err) {
     repos.files.updateParseStatus(file.id, "failed");
     fail(res, 500, err instanceof Error ? err.message : "outline preview failed");
+  }
+});
+
+app.post("/api/admin/books/:bookId/files/:fileId/generate-json-index", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const file = repos.files.findById(req.params.fileId);
+  if (!file || file.bookId !== book.id) return fail(res, 404, "file not found");
+  if (file.role !== "source_document" || !isPdfBookFile(file)) {
+    return fail(res, 400, "JSON index generation requires a PDF source document");
+  }
+
+  const parsed = generatePdfJsonIndexInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+
+  try {
+    const { contents, pageCount } = await parsePdfToContents(file.filePath, book.id, file.id);
+    const index = buildPdfJsonIndex({
+      bookId: book.id,
+      fileId: file.id,
+      fileName: file.fileName,
+      level: parsed.data.level,
+      pageCount,
+      contents,
+      chapters: repos.chapters.findByBookId(book.id)
+    });
+    res.json({ index });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "generate json index failed");
   }
 });
 

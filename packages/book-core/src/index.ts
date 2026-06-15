@@ -3,5 +3,6 @@ export * from "./content-splitter";
 export * from "./pdf-parser";
 export * from "./book-splitter";
 export * from "./chapter-builder";
+export * from "./pdf-index-builder";
 export * from "./chapter-summarizer";
 export * from "./book-qa";

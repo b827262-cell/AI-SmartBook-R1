@@ -2,6 +2,7 @@ export * from "./book.schema";
 export * from "./bookFile.schema";
 export * from "./bookContent.schema";
 export * from "./chapter.schema";
+export * from "./pdfIndex.schema";
 export * from "./chat.schema";
 export * from "./aiJob.schema";
 export * from "./qaLog.schema";
