@@ -431,6 +431,77 @@ a { color: var(--primary); text-decoration: none; }
 .chapter-list button.active { background: #eef2ff; color: var(--primary); font-weight: 600; }
 .chapter-list .ch-order { color: var(--muted); margin-right: 4px; }
 .chapter-list .ch-summary { font-size: 13px; color: var(--muted); padding: 4px 10px 8px; margin: 0; line-height: 1.7; }
+.toc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.toc-head h4 { margin: 0; }
+.toc-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.toc-node ul {
+  list-style: none;
+  margin: 2px 0 4px;
+  padding: 0;
+}
+.toc-node-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.toc-expander {
+  flex: 0 0 22px;
+  width: 22px;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+}
+.toc-expander.placeholder { cursor: default; }
+.toc-node-btn {
+  flex: 1;
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.toc-node-btn:disabled {
+  cursor: default;
+  color: var(--muted);
+}
+.toc-node-title {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.toc-node-page {
+  color: #d97706;
+  font-size: 12px;
+  font-weight: 700;
+}
+.toc-node.level-1 > .toc-node-row .toc-node-btn {
+  color: #0b63c7;
+  font-weight: 800;
+}
+.toc-node.level-2 { padding-left: 12px; }
+.toc-node.level-3 { padding-left: 24px; }
+.toc-node.level-4 { padding-left: 36px; }
+.toc-node.level-2 .toc-node-btn,
+.toc-node.level-3 .toc-node-btn,
+.toc-node.level-4 .toc-node-btn {
+  font-size: 13px;
+  color: #2a3a52;
+}
 .reader-body .para { line-height: 1.9; margin-bottom: 16px; }
 .reader-body .para .pageno { color: var(--muted); font-size: 12px; margin-right: 8px; }
 .reader-chat .chat-wrap { height: 520px; max-width: none; margin: 0; }
@@ -743,6 +814,19 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
 .tool-pagenav { display: inline-flex; align-items: center; gap: 6px; }
 .tool-pagenav .tool-btn { padding: 6px 9px; line-height: 1; }
 .tool-pagenav .tool-page { min-width: 76px; text-align: center; }
+.tool-page-input {
+  width: 58px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+}
+.tool-page-input.invalid {
+  border-color: #dc2626;
+  color: #b91c1c;
+}
 .tool-btn:disabled { opacity: 0.45; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
 
 /* Sticky-note modal */

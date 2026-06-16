@@ -3,7 +3,8 @@ import type {
   Book,
   BookChapter,
   BookContent,
-  ChatMessage
+  ChatMessage,
+  ReaderOutlineResponse
 } from "@ai-smartbook/schema";
 
 export interface BookDetail extends Book {
@@ -55,6 +56,9 @@ export const studentClient = {
   listBooks: () => http<{ mode: string; books: Book[] }>("/api/student/books"),
 
   getBook: (bookId: string) => http<{ book: BookDetail }>(`/api/student/books/${bookId}`),
+
+  getOutline: (bookId: string) =>
+    http<ReaderOutlineResponse>(`/api/student/books/${bookId}/outline`),
 
   getContents: (bookId: string) =>
     http<{ contents: BookContent[] }>(`/api/student/books/${bookId}/contents`),

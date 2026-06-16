@@ -11,6 +11,8 @@ import {
   buildChaptersFromPdfOutline,
   buildChapterPreviewRowsFromPdfOutline,
   buildPdfJsonIndex,
+  normalizeChaptersToReaderOutline,
+  normalizeReaderOutline,
   getChapterPreviewApplyStatus,
   linkChaptersByPageRange,
   summarizeChapter,
@@ -1377,6 +1379,41 @@ app.get("/api/student/books/:bookId", (req, res) => {
       pdfFileName: pdfFile?.fileName ?? null
     }
   });
+});
+
+app.get("/api/student/books/:bookId/outline", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+
+  const jsonIndexFiles = repos.files
+    .findByBookId(book.id)
+    .filter((file) => file.role === JSON_INDEX_ROLE)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const activeId = getActiveQaReferenceId(book.id);
+  const candidates = [
+    ...jsonIndexFiles.filter((file) => {
+      const index = readStoredJsonIndex(file);
+      return index?.level === "chapter";
+    }),
+    ...jsonIndexFiles.filter((file) => file.id === activeId),
+    ...jsonIndexFiles
+  ];
+  const seen = new Set<string>();
+
+  for (const file of candidates) {
+    if (seen.has(file.id)) continue;
+    seen.add(file.id);
+    const index = readStoredJsonIndex(file);
+    if (!index) continue;
+    const outline = normalizeReaderOutline(index, "split_json");
+    if (outline.length > 0) {
+      return res.json({ bookId: book.id, source: "split_json", outline });
+    }
+  }
+
+  const chapters = repos.chapters.findByBookId(book.id);
+  const outline = normalizeChaptersToReaderOutline(chapters, "chapter_table");
+  res.json({ bookId: book.id, source: "chapter_table", outline });
 });
 
 app.get("/api/student/books/:bookId/contents", (req, res) => {

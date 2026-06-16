@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useParams } from "react-router-dom";
-import type { BookChapter } from "@ai-smartbook/schema";
+import type { BookChapter, ReaderOutlineNode, ReaderOutlineSource } from "@ai-smartbook/schema";
 import { studentClient, type BookDetail } from "../studentClient";
 import type { StudentBook } from "../bookDisplay";
 import { ReaderTopBar } from "../components/ReaderTopBar";
@@ -9,6 +9,7 @@ import { ChapterSidebar } from "../components/ChapterSidebar";
 import {
   PdfReaderToolbar,
   RATIO_AI_WIDTH,
+  RATIO_TOC_WIDTH,
   type ReaderRatio
 } from "../components/PdfReaderToolbar";
 import { ProtectedPdfViewer } from "../components/ProtectedPdfViewer";
@@ -34,6 +35,7 @@ const AI_DEFAULT = 380;
 const TOC_WIDTH_KEY = "smartbook.reader.tocWidth";
 const AI_WIDTH_KEY = "smartbook.reader.aiWidth";
 const OUTER_LAYOUT_KEY = "smartbook.reader.outerLayout";
+const LAYOUT_RATIO_KEY = "smartbook.reader.layoutRatio";
 const OUTER_GUTTER_MIN = 16;
 const OUTER_GUTTER_MAX = 520;
 
@@ -49,6 +51,15 @@ function readStoredWidth(key: string, fallback: number, min: number, max: number
     return Number.isFinite(n) ? clamp(n, min, max) : fallback;
   } catch {
     return fallback;
+  }
+}
+
+function readStoredRatio(): ReaderRatio {
+  try {
+    const raw = localStorage.getItem(LAYOUT_RATIO_KEY);
+    return raw === "6:4" || raw === "1:1" || raw === "4:6" ? raw : "6:4";
+  } catch {
+    return "6:4";
   }
 }
 
@@ -77,6 +88,34 @@ function readStoredOuterLayout(): { leftGutter: number; rightGutter: number } {
 
 function studentSessionKey(bookId: string): string {
   return `smartbook.chatSession.${bookId}`;
+}
+
+function flattenOutline(nodes: ReaderOutlineNode[]): ReaderOutlineNode[] {
+  const flat: ReaderOutlineNode[] = [];
+  function walk(items: ReaderOutlineNode[]) {
+    for (const item of items) {
+      flat.push(item);
+      walk(item.children);
+    }
+  }
+  walk(nodes);
+  return flat;
+}
+
+function chaptersToFallbackOutline(chapters: BookChapter[]): ReaderOutlineNode[] {
+  return chapters
+    .slice()
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title,
+      level: Math.max(1, (chapter.level ?? 0) + 1),
+      page: chapter.pageStart ?? null,
+      pdfPage: chapter.pageStart ?? null,
+      displayPage: chapter.pageStart != null ? String(chapter.pageStart) : null,
+      children: [],
+      source: chapter.source === "pdf_outline" ? "pdf_outline" : "chapter_table"
+    }));
 }
 
 /** Draggable vertical split handle. Reports pointer dx so the parent clamps. */
@@ -147,7 +186,9 @@ export function BookReaderPage() {
   const { bookId = "" } = useParams();
   const initialOuterLayout = useMemo(() => readStoredOuterLayout(), []);
   const [book, setBook] = useState<BookDetail | null>(null);
-  const [activeChapter, setActiveChapter] = useState<string | null>(null);
+  const [outline, setOutline] = useState<ReaderOutlineNode[]>([]);
+  const [outlineSource, setOutlineSource] = useState<ReaderOutlineSource>("fallback");
+  const [selectedOutlineId, setSelectedOutlineId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ReaderTabKey>("smart-book");
   const [collapsed, setCollapsed] = useState(false);
   const [aiCollapsed, setAiCollapsed] = useState(false);
@@ -159,6 +200,7 @@ export function BookReaderPage() {
   );
   const [leftGutter, setLeftGutter] = useState(initialOuterLayout.leftGutter);
   const [rightGutter, setRightGutter] = useState(initialOuterLayout.rightGutter);
+  const [layoutRatio, setLayoutRatio] = useState<ReaderRatio>(() => readStoredRatio());
   const [zoom, setZoom] = useState(100);
   // PDF physical page is the canonical navigation source of truth.
   const [pdfPage, setPdfPage] = useState(1);
@@ -195,10 +237,19 @@ export function BookReaderPage() {
       /* ignore */
     }
   }, [leftGutter, rightGutter]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAYOUT_RATIO_KEY, layoutRatio);
+    } catch {
+      /* ignore */
+    }
+  }, [layoutRatio]);
 
   // Reset per-book view state when switching books.
   useEffect(() => {
-    setActiveChapter(null);
+    setSelectedOutlineId(null);
+    setOutline([]);
+    setOutlineSource("fallback");
     setActiveTab("smart-book");
     setPdfPage(1);
     setPageCount(null);
@@ -214,6 +265,26 @@ export function BookReaderPage() {
       .catch((e) => setError(String(e.message)))
       .finally(() => setLoading(false));
   }, [bookId]);
+
+  useEffect(() => {
+    if (!book) return;
+    let disposed = false;
+    studentClient
+      .getOutline(book.id)
+      .then((result) => {
+        if (disposed) return;
+        setOutline(result.outline);
+        setOutlineSource(result.source);
+      })
+      .catch(() => {
+        if (disposed) return;
+        setOutline(chaptersToFallbackOutline(book.chapters ?? []));
+        setOutlineSource("fallback");
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [book]);
 
   useEffect(() => {
     setPdfBlob(null);
@@ -273,21 +344,28 @@ export function BookReaderPage() {
     };
   }, [bookId, book?.pdfFileId]);
 
-  // Guard against a stale chapter id that does not belong to the current book.
-  const safeActiveChapter = useMemo(
-    () => ((book?.chapters ?? []).some((ch) => ch.id === activeChapter) ? activeChapter : null),
-    [book, activeChapter]
-  );
-
   if (loading) return <p className="muted reader-state">載入中…</p>;
   if (error) return <p className="error-text reader-state">{error}</p>;
   if (!book) return <p className="muted reader-state">找不到這本書。</p>;
 
   const chapters: BookChapter[] = book.chapters ?? [];
-  const activeChapterTitle = chapters.find((c) => c.id === safeActiveChapter)?.title ?? null;
-  const activeRatio =
-    (Object.keys(RATIO_AI_WIDTH) as ReaderRatio[]).find((r) => RATIO_AI_WIDTH[r] === aiWidth) ??
+  const flatOutline = flattenOutline(outline);
+  const pageMappedOutline = flatOutline.filter((node) => node.page != null);
+  const activeOutlineNode =
+    [...pageMappedOutline]
+      .filter((node) => (node.page ?? 0) <= pdfPage)
+      .sort((a, b) => (b.page ?? 0) - (a.page ?? 0))[0] ??
+    flatOutline.find((node) => node.id === selectedOutlineId) ??
     null;
+  const activeOutlineId = activeOutlineNode?.id ?? null;
+  const activeChapter =
+    activeOutlineNode != null
+      ? chapters.find((chapter) => chapter.id === activeOutlineNode.id) ??
+        chapters.find((chapter) => chapter.pageStart != null && chapter.pageStart === activeOutlineNode.page) ??
+        null
+      : null;
+  const safeActiveChapter = activeChapter?.id ?? null;
+  const activeChapterTitle = activeOutlineNode?.title ?? activeChapter?.title ?? null;
   const watermarkText = [
     "iBrain 智匯",
     pdfSessionId ? `session ${pdfSessionId}` : "session pending",
@@ -295,16 +373,19 @@ export function BookReaderPage() {
     watermarkStamp || new Date().toLocaleDateString()
   ].join(" · ");
 
-  // Chapter selection drives PDF navigation. chapter.pageStart is treated as the
-  // canonical PDF physical page; printed labels are never used here.
-  function selectChapter(chapterId: string | null) {
-    setActiveChapter(chapterId);
-    if (!chapterId) {
+  function jumpToPage(page: number) {
+    const clamped = clamp(page, 1, pageCount ?? Number.MAX_SAFE_INTEGER);
+    setPdfPage(clamped);
+  }
+
+  function selectOutlineNode(nodeId: string | null) {
+    setSelectedOutlineId(nodeId);
+    if (!nodeId) {
       setPdfPage(1);
       return;
     }
-    const chapter = chapters.find((c) => c.id === chapterId);
-    if (chapter?.pageStart != null) setPdfPage(Math.max(1, chapter.pageStart));
+    const node = flatOutline.find((candidate) => candidate.id === nodeId);
+    if (node?.page != null) jumpToPage(node.page);
   }
 
   const prevPage = () => setPdfPage((p) => Math.max(1, p - 1));
@@ -323,6 +404,12 @@ export function BookReaderPage() {
     }
     setLeftGutter(OUTER_GUTTER_MIN);
     setRightGutter(OUTER_GUTTER_MIN);
+  }
+
+  function applyLayoutRatio(nextRatio: ReaderRatio) {
+    setLayoutRatio(nextRatio);
+    setTocWidth(RATIO_TOC_WIDTH[nextRatio]);
+    setAiWidth(RATIO_AI_WIDTH[nextRatio]);
   }
 
   function resizeLeftOuter(dx: number) {
@@ -374,9 +461,9 @@ export function BookReaderPage() {
         {activeTab === "smart-book" ? (
           <>
             <PdfReaderToolbar
-              chapters={chapters}
-              activeChapter={safeActiveChapter}
-              onSelectChapter={selectChapter}
+              outlineNodes={flatOutline}
+              activeNodeId={activeOutlineId}
+              onSelectOutlineNode={selectOutlineNode}
               fullWidth={fullWidth}
               onToggleFullWidth={toggleFullWidth}
               tocCollapsed={collapsed}
@@ -385,10 +472,11 @@ export function BookReaderPage() {
               onToggleAi={() => setAiCollapsed((v) => !v)}
               zoom={zoom}
               onZoom={setZoom}
-              ratio={activeRatio}
-              onRatio={(r) => setAiWidth(RATIO_AI_WIDTH[r])}
+              ratio={layoutRatio}
+              onRatio={applyLayoutRatio}
               page={book.pdfFileId ? pdfPage : null}
               pageCount={pageCount}
+              onJumpPage={jumpToPage}
               onPrevPage={prevPage}
               onNextPage={nextPage}
               onOpenNote={() => setNoteOpen(true)}
@@ -398,9 +486,10 @@ export function BookReaderPage() {
             <div className="reader-main">
               {!collapsed && (
                 <ChapterSidebar
-                  chapters={chapters}
-                  activeChapter={safeActiveChapter}
-                  onSelect={selectChapter}
+                  outline={outline}
+                  activeNodeId={activeOutlineId}
+                  outlineSource={outlineSource}
+                  onSelect={selectOutlineNode}
                   width={tocWidth}
                 />
               )}
