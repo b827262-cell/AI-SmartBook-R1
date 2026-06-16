@@ -966,21 +966,33 @@ app.post("/api/admin/books/:bookId/files/:fileId/generate-json-index", async (re
   }
 });
 
-// Persist a generated index (posted in the body) as a managed json_index file.
-app.post("/api/admin/books/:bookId/files/:fileId/save-json-index", (req, res) => {
+// Persist a JSON index as a managed json_index file. The request body carries
+// only { level, setActive }; the server regenerates the (possibly very large)
+// index from the PDF so the request never ships the full item array (no 413).
+app.post("/api/admin/books/:bookId/files/:fileId/save-json-index", async (req, res) => {
   const book = repos.books.findById(req.params.bookId);
   if (!book) return fail(res, 404, "book not found");
   const source = repos.files.findById(req.params.fileId);
   if (!source || source.bookId !== book.id) return fail(res, 404, "file not found");
+  if (source.role !== "source_document" || !isPdfBookFile(source)) {
+    return fail(res, 400, "saving a JSON index requires a PDF source document");
+  }
 
   const parsed = saveJsonIndexInputSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, parsed.error.message);
-  const index = parsed.data.index;
-  if (index.bookId !== book.id) return fail(res, 400, "JSON index bookId does not match this book");
-  if (index.fileId !== source.id) return fail(res, 400, "JSON index fileId does not match this PDF");
 
   try {
-    const baseName = `${index.fileName.replace(/\.pdf$/i, "")}-${index.level}-index`;
+    const { contents, pageCount } = await parsePdfToContents(source.filePath, book.id, source.id);
+    const index = buildPdfJsonIndex({
+      bookId: book.id,
+      fileId: source.id,
+      fileName: source.fileName,
+      level: parsed.data.level,
+      pageCount,
+      contents,
+      chapters: repos.chapters.findByBookId(book.id)
+    });
+    const baseName = `${source.fileName.replace(/\.pdf$/i, "")}-${index.level}-index`;
     const path = writeJsonIndexArtifact(book.id, baseName, index);
     const record = repos.files.create({
       bookId: book.id,

@@ -45,9 +45,13 @@ export const generatePdfJsonIndexInputSchema = z.object({
 });
 export type GeneratePdfJsonIndexInput = z.infer<typeof generatePdfJsonIndexInputSchema>;
 
-/** Body for persisting a generated index as a managed QA-reference artifact. */
+/**
+ * Body for persisting an index as a managed QA-reference artifact. Only small
+ * metadata is sent; the server regenerates the (potentially huge) index from
+ * the PDF, so the request body never carries the full item array (avoids 413).
+ */
 export const saveJsonIndexInputSchema = z.object({
-  index: pdfJsonIndexSchema,
+  level: pdfJsonIndexLevelSchema,
   setActive: z.boolean().optional()
 });
 export type SaveJsonIndexInput = z.infer<typeof saveJsonIndexInputSchema>;

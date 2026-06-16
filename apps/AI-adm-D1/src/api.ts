@@ -107,10 +107,17 @@ export const adminApi = {
     ),
 
   // ---- JSON index / QA reference -----------------------------------------
-  saveJsonIndex: (bookId: string, fileId: string, index: PdfJsonIndex, setActive = false) =>
+  // Sends only { level, setActive }; the server regenerates + stores the index
+  // (the full item array is never uploaded, so large indexes do not 413).
+  saveJsonIndex: (
+    bookId: string,
+    fileId: string,
+    level: GeneratePdfJsonIndexInput["level"],
+    setActive = false
+  ) =>
     http<{ index: StoredJsonIndexSummary }>(
       `/api/admin/books/${bookId}/files/${fileId}/save-json-index`,
-      { method: "POST", body: JSON.stringify({ index, setActive }) }
+      { method: "POST", body: JSON.stringify({ level, setActive }) }
     ),
 
   uploadJsonIndex: (bookId: string, file: File) => {

@@ -212,8 +212,11 @@ export function FilesTab({ bookId }: { bookId: string }) {
   // ---- JSON index / QA reference management --------------------------------
   async function onSaveAsQaReference() {
     if (!generatedIndex) return;
+    // Send only the level/source metadata; the server regenerates and stores the
+    // index so a large item array is never uploaded (avoids 413 Payload Too Large).
+    const { fileId, level } = generatedIndex;
     await run(async () => {
-      const result = await adminApi.saveJsonIndex(bookId, generatedIndex.fileId, generatedIndex, true);
+      const result = await adminApi.saveJsonIndex(bookId, fileId, level, true);
       setMsg(`Saved JSON index as active QA reference: ${result.index.fileName}`);
       await reload();
     });
