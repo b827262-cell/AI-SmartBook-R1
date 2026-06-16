@@ -4,11 +4,17 @@ import type {
   ChapterPreviewApplyStatus,
   ChapterPreviewEntryType,
   ChapterPreviewRow,
+  ReaderOutlineNode,
   PdfJsonIndex,
   PdfJsonIndexLevel,
   StoredJsonIndexSummary
 } from "@ai-smartbook/schema";
-import { adminApi } from "../../api";
+import {
+  adminApi,
+  type GenerateReaderTocResponse,
+  type ReaderTocImportPayload,
+  type ReaderTocResponse
+} from "../../api";
 
 const ENTRY_TYPE_OPTIONS: ChapterPreviewEntryType[] = [
   "front_matter",
@@ -28,6 +34,166 @@ const JSON_INDEX_LEVEL_OPTIONS: Array<{ value: PdfJsonIndexLevel; label: string 
   { value: "line", label: "高階：分行" },
   { value: "sentence", label: "頂級：分句" }
 ];
+
+type ReaderTocNode = ReaderOutlineNode;
+
+function safeTrim(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parsePage(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return Math.trunc(raw);
+  if (typeof raw === "string") {
+    const match = raw.match(/\d+/);
+    if (!match) return null;
+    const parsed = Number.parseInt(match[0], 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function stripPageLabel(rawTitle: string): { title: string; page: number | null } {
+  const trimmed = rawTitle.trim();
+  const prefixed = trimmed.match(/^\[\s*p\.?\s*(\d+)\s*\]\s*(.+)$/i);
+  if (prefixed) return { title: prefixed[2].trim(), page: parseInt(prefixed[1], 10) };
+
+  const suffixed = trimmed.match(/^(.*?)\s+(?:\[?\s*)?p\.?\s*(\d+)\s*(?:\]|\))?\s*$/i);
+  if (suffixed) return { title: suffixed[1].trim(), page: parseInt(suffixed[2], 10) };
+
+  return { title: trimmed, page: null };
+}
+
+function parseReaderTocMarkdown(content: string): ReaderTocNode[] {
+  const lines = content.replace(/\r/g, "").split("\n");
+  const roots: ReaderTocNode[] = [];
+  const stack: Array<{ level: number; node: ReaderTocNode }> = [];
+
+  function addNode(level: number, title: string, page: number | null): ReaderTocNode {
+    const node: ReaderTocNode = {
+      id: `preview-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`,
+      title,
+      level: Math.max(1, level),
+      page,
+      pdfPage: page,
+      displayPage: page != null ? String(page) : null,
+      children: [],
+      source: "manual_toc"
+    };
+
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      stack[stack.length - 1].node.children.push(node);
+    }
+
+    stack.push({ level: node.level, node });
+    return node;
+  }
+
+  for (const rawLine of lines) {
+    const headingMatch = rawLine.match(/^(#{1,2})\s+(.*)$/);
+    if (headingMatch) {
+      const heading = stripPageLabel(headingMatch[2]);
+      if (heading.title) {
+        addNode(headingMatch[1].length, heading.title, heading.page);
+      }
+      continue;
+    }
+
+    const bulletMatch = rawLine.match(/^(\s*)[-*+]\s+(.*)$/);
+    if (!bulletMatch) continue;
+
+    const parsed = stripPageLabel(bulletMatch[2]);
+    if (!parsed.title) continue;
+
+    // Bullet depth comes only from leading indentation, never from the current
+    // stack top — otherwise flat sibling bullets cascade into deeper levels.
+    const indent = Math.floor(bulletMatch[1].replace(/\t/g, "    ").length / 2);
+    const level = 2 + indent;
+    addNode(level, parsed.title, parsed.page);
+  }
+
+  return roots;
+}
+
+function toReaderTocNode(raw: unknown): ReaderTocNode | null {
+  if (!raw || typeof raw !== "object") return null;
+  const title = safeTrim((raw as { title?: unknown }).title);
+  if (!title) return null;
+
+  const childrenRaw = ((raw as { children?: unknown }).children ?? (raw as { items?: unknown }).items) as unknown;
+  const normalizedChildren = Array.isArray(childrenRaw)
+    ? childrenRaw.map(toReaderTocNode).filter((x): x is ReaderTocNode => x != null)
+    : [];
+
+  const rawLevel = (raw as { level?: unknown }).level;
+  const level =
+    typeof rawLevel === "number" && Number.isInteger(rawLevel) && rawLevel > 0
+      ? rawLevel
+      : Math.max(1, normalizedChildren.length > 0 ? 1 : 1);
+
+  return {
+    id: safeTrim((raw as { id?: unknown }).id) || `preview-${Math.random().toString(36).slice(2, 8)}-${Date.now()}`,
+    title,
+    level: Math.max(1, level),
+    page: parsePage((raw as { page?: unknown }).page ?? (raw as { pdfPage?: unknown }).pdfPage),
+    pdfPage: parsePage((raw as { page?: unknown }).page ?? (raw as { pdfPage?: unknown }).pdfPage),
+    displayPage: safeTrim((raw as { displayPage?: unknown }).displayPage) || null,
+    children: normalizedChildren,
+    source: "manual_toc"
+  };
+}
+
+function parseReaderTocJson(content: string): ReaderTocNode[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("JSON parse failed");
+  }
+
+  const asRecord = (parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null) ?? null;
+  const items = asRecord != null && asRecord.schemaVersion === "smartbook-reader-toc-v1" && Array.isArray((asRecord as { items?: unknown }).items)
+    ? (asRecord as { items?: unknown[] }).items
+    : Array.isArray(parsed)
+      ? parsed
+      : [];
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  return items
+    .map(toReaderTocNode)
+    .filter((item): item is ReaderTocNode => item != null);
+}
+
+function parseReaderTocForPreview(format: ReaderTocFormat, content: string): ReaderTocNode[] {
+  if (format === "markdown") {
+    return parseReaderTocMarkdown(content);
+  }
+
+  return parseReaderTocJson(content);
+}
+
+function renderPreview(nodes: ReaderTocNode[], depth = 0): string[] {
+  const lines: string[] = [];
+  for (const node of nodes) {
+    const prefix = "  ".repeat(depth);
+    const pageLabel = node.page != null ? ` [p.${node.page}]` : "";
+    lines.push(`${prefix}${"  ".repeat(Math.max(node.level - 1, 0))}${node.title}${pageLabel}`);
+    if (node.children.length > 0) {
+      lines.push(...renderPreview(node.children, depth + 1));
+    }
+  }
+  return lines;
+}
+
+type ReaderTocFormat = ReaderTocImportPayload["format"];
 
 type FileRowKind = "pdf_source" | "reference_image" | "misclassified_image" | "unsupported_source";
 
@@ -66,27 +232,38 @@ function parseNullableInt(value: string): number | null {
 
 export function FilesTab({ bookId }: { bookId: string }) {
   const [files, setFiles] = useState<BookFile[]>([]);
+  const [readerToc, setReaderToc] = useState<ReaderTocResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [readerTocFormat, setReaderTocFormat] = useState<ReaderTocFormat>("markdown");
+  const [readerTocContent, setReaderTocContent] = useState("");
+  const [readerTocPreview, setReaderTocPreview] = useState<ReaderTocNode[]>([]);
+  const [readerTocPreviewError, setReaderTocPreviewError] = useState("");
   const [previewRows, setPreviewRows] = useState<ChapterPreviewRow[]>([]);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [previewPageCount, setPreviewPageCount] = useState(0);
   const [jsonLevels, setJsonLevels] = useState<Record<string, PdfJsonIndexLevel>>({});
   const [generatedIndex, setGeneratedIndex] = useState<PdfJsonIndex | null>(null);
   const [jsonIndexes, setJsonIndexes] = useState<StoredJsonIndexSummary[]>([]);
+  const [tocPageStart, setTocPageStart] = useState("3");
+  const [tocPageEnd, setTocPageEnd] = useState("6");
+  const [genTocResult, setGenTocResult] = useState<GenerateReaderTocResponse | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const jsonUploadRef = useRef<HTMLInputElement>(null);
   const previewSectionRef = useRef<HTMLDivElement>(null);
   const jsonResultRef = useRef<HTMLDivElement>(null);
+  const readerTocSectionRef = useRef<HTMLDivElement>(null);
 
   async function reload() {
-    const [data, idx] = await Promise.all([
+    const [data, idx, toc] = await Promise.all([
       adminApi.getBook(bookId),
-      adminApi.listJsonIndexes(bookId)
+      adminApi.listJsonIndexes(bookId),
+      adminApi.getReaderToc(bookId)
     ]);
     setFiles(data.files);
     setJsonIndexes(idx.indexes);
+    setReaderToc(toc);
   }
 
   useEffect(() => {
@@ -96,11 +273,21 @@ export function FilesTab({ bookId }: { bookId: string }) {
   const previewFile = previewFileId ? files.find((file) => file.id === previewFileId) ?? null : null;
   // The main table lists PDF sources / reference images; stored JSON indexes are
   // managed in their own "JSON Index / QA Reference" section below.
-  const documentFiles = files.filter((file) => file.role !== "json_index");
+  const documentFiles = files.filter((file) => file.role !== "json_index" && file.role !== "reader_toc");
   const generatedJsonText = useMemo(
     () => (generatedIndex ? JSON.stringify(generatedIndex, null, 2) : ""),
     [generatedIndex]
   );
+  const readerTocPreviewText = useMemo(() => renderPreview(readerTocPreview).join("\n"), [readerTocPreview]);
+  // Detect a full sentence JSON Index accidentally pasted into the manual TOC box.
+  const looksLikeSentenceIndex = useMemo(() => {
+    const c = readerTocContent;
+    if (!c) return false;
+    return (
+      c.includes("smartbook-pdf-index-v1") &&
+      (/"level"\s*:\s*"sentence"/.test(c) || c.length > 200000)
+    );
+  }, [readerTocContent]);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -209,6 +396,58 @@ export function FilesTab({ bookId }: { bookId: string }) {
     URL.revokeObjectURL(url);
   }
 
+  function onPreviewReaderToc() {
+    setReaderTocPreviewError("");
+    try {
+      const parsed = parseReaderTocForPreview(readerTocFormat, readerTocContent);
+      if (parsed.length === 0) {
+        setReaderTocPreviewError("No valid TOC items found in content.");
+        setReaderTocPreview([]);
+        return;
+      }
+      setReaderTocPreview(parsed);
+      setTimeout(() => {
+        readerTocSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    } catch (e) {
+      setReaderTocPreview([]);
+      setReaderTocPreviewError(e instanceof Error ? e.message : "Failed to parse reader TOC content.");
+    }
+  }
+
+  async function onImportReaderToc() {
+    await run(async () => {
+      const payload: ReaderTocImportPayload = {
+        format: readerTocFormat,
+        content: readerTocContent
+      };
+      const result = await adminApi.importReaderToc(bookId, payload);
+      setReaderToc(result);
+      setReaderTocPreview(result.outline);
+      setMsg(`Imported reader TOC: ${result.file?.fileName ?? "manual_toc.json"}`);
+      await reload();
+      setTimeout(() => {
+        readerTocSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    });
+  }
+
+  async function onDeleteReaderToc() {
+    if (!readerToc?.file) {
+      setMsg("No active reader TOC to delete.");
+      return;
+    }
+    if (!window.confirm(`Delete active reader TOC "${readerToc.file.fileName}"?`)) return;
+
+    await run(async () => {
+      const result = await adminApi.deleteReaderToc(bookId);
+      setMsg(`Deleted reader TOC records: ${result.deleted}`);
+      setReaderToc(null);
+      setReaderTocPreview([]);
+      await reload();
+    });
+  }
+
   // ---- JSON index / QA reference management --------------------------------
   async function onSaveAsQaReference() {
     if (!generatedIndex) return;
@@ -237,6 +476,26 @@ export function FilesTab({ bookId }: { bookId: string }) {
     await run(async () => {
       await adminApi.setActiveQaReference(bookId, indexFileId);
       setMsg("Active QA reference updated.");
+      await reload();
+    });
+  }
+
+  async function onGenerateReaderTocFromIndex(indexFileId: string) {
+    const ps = Number.parseInt(tocPageStart, 10);
+    const pe = Number.parseInt(tocPageEnd, 10);
+    if (!Number.isFinite(ps) || !Number.isFinite(pe) || ps < 1 || pe < 1) {
+      setError("Enter a valid TOC page start and end (>= 1).");
+      setMsg("");
+      return;
+    }
+    await run(async () => {
+      const result = await adminApi.generateReaderTocFromJsonIndex(bookId, indexFileId, ps, pe);
+      setGenTocResult(result);
+      // Reuse the manual TOC preview tree to show the generated hierarchy.
+      setReaderTocPreview(result.outline);
+      setReaderTocPreviewError("");
+      const warn = result.warnings.length ? ` ⚠ ${result.warnings.join("; ")}` : "";
+      setMsg(`Generated Reader TOC: ${result.file?.itemCount ?? 0} items (active).${warn}`);
       await reload();
     });
   }
@@ -336,6 +595,74 @@ export function FilesTab({ bookId }: { bookId: string }) {
         </div>
         {msg && <p className="muted">{msg}</p>}
         {error && <p className="error">{error}</p>}
+      </div>
+
+      <div className="card" ref={readerTocSectionRef}>
+        <div className="row between" style={{ alignItems: "flex-start" }}>
+          <div>
+            <h3 style={{ marginTop: 0, marginBottom: 6 }}>Manual Reader TOC</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              Import structured chapter/section hierarchy used by the student reader.
+            </p>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <select
+              value={readerTocFormat}
+              onChange={(e) => setReaderTocFormat(e.target.value as ReaderTocFormat)}
+              disabled={busy}
+            >
+              <option value="markdown">Markdown</option>
+              <option value="json">JSON</option>
+            </select>
+            <button className="btn secondary" onClick={() => onPreviewReaderToc()} disabled={busy}>
+              Preview
+            </button>
+            <button className="btn" onClick={() => void onImportReaderToc()} disabled={busy || !readerTocContent.trim()}>
+              Import / Replace
+            </button>
+            <button className="btn secondary" onClick={() => void onDeleteReaderToc()} disabled={busy || !readerToc?.file}>
+              Delete TOC
+            </button>
+          </div>
+        </div>
+
+        <div className="row" style={{ marginTop: 10, gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="muted" style={{ margin: 0 }}>
+            Active TOC:
+          </span>
+          <strong style={{ color: readerToc?.file ? undefined : "#64748b" }}>
+            {readerToc?.file?.fileName ?? "none"}
+          </strong>
+          {readerToc?.file ? <span className="muted">Items: {readerToc.file.itemCount}</span> : null}
+          {readerToc?.file ? <span className="muted">Updated: {readerToc.file.createdAt}</span> : null}
+        </div>
+
+        <textarea
+          style={{ width: "100%", minHeight: 220, marginTop: 10, resize: "vertical" }}
+          value={readerTocContent}
+          onChange={(e) => setReaderTocContent(e.target.value)}
+          placeholder="# 第零章 緒論 p.1\n- 一、國際會計準則 p.2\n- 二、我國財務會計準則 p.3\n- 三、修正商業會計法 p.4"
+        />
+
+        {looksLikeSentenceIndex ? (
+          <p className="error" style={{ marginTop: 8 }}>
+            This is a sentence JSON Index, not a Reader TOC. Use “Generate Reader TOC from JSON
+            Index” instead.
+          </p>
+        ) : null}
+
+        {readerTocPreviewError ? <p className="error">{readerTocPreviewError}</p> : null}
+
+        {readerTocContent.trim() || readerTocPreview.length > 0 ? (
+          <div className="admin-json-panel" style={{ marginTop: 12 }}>
+            <details open>
+              <summary>Preview parsed tree</summary>
+              <pre className="files-json-preview" style={{ marginTop: 8 }}>
+                {readerTocPreviewText || "(empty)"}
+              </pre>
+            </details>
+          </div>
+        ) : null}
       </div>
 
       <div className="card">
@@ -724,6 +1051,39 @@ export function FilesTab({ bookId }: { bookId: string }) {
           </div>
         </div>
 
+        <div
+          className="row"
+          style={{ gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}
+        >
+          <span className="muted">Reader TOC page start:</span>
+          <input
+            type="number"
+            min={1}
+            value={tocPageStart}
+            onChange={(e) => setTocPageStart(e.target.value)}
+            style={{ width: 88 }}
+          />
+          <span className="muted">page end:</span>
+          <input
+            type="number"
+            min={1}
+            value={tocPageEnd}
+            onChange={(e) => setTocPageEnd(e.target.value)}
+            style={{ width: 88 }}
+          />
+          <span className="muted">— then click “Generate Reader TOC” on a JSON Index row below.</span>
+        </div>
+
+        {genTocResult ? (
+          <p
+            className={genTocResult.warnings.length ? "error" : "muted"}
+            style={{ marginTop: 8 }}
+          >
+            Reader TOC generated: {genTocResult.file?.itemCount ?? 0} items
+            {genTocResult.warnings.length ? ` — ⚠ ${genTocResult.warnings.join("; ")}` : ""}
+          </p>
+        ) : null}
+
         {jsonIndexes.length === 0 ? (
           <p className="muted" style={{ marginTop: 12 }}>
             No stored JSON index yet. Generate an index above and click “Save as QA Reference”, or
@@ -772,6 +1132,14 @@ export function FilesTab({ bookId }: { bookId: string }) {
                           disabled={busy || idx.isActive || !idx.valid}
                         >
                           Set as QA Reference
+                        </button>
+                        <button
+                          className="btn"
+                          onClick={() => void onGenerateReaderTocFromIndex(idx.fileId)}
+                          disabled={busy || !idx.valid}
+                          title="Generate a chapter/section Reader TOC from this index using the page range above"
+                        >
+                          Generate Reader TOC
                         </button>
                         <button className="btn secondary" onClick={() => onViewJsonIndex(idx.fileId)}>
                           View JSON

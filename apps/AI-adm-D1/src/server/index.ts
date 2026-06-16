@@ -10,10 +10,14 @@ import {
   buildChaptersFromContents,
   buildChaptersFromPdfOutline,
   buildChapterPreviewRowsFromPdfOutline,
+  extractPdfOutline,
   buildPdfJsonIndex,
   normalizeChaptersToReaderOutline,
   normalizeReaderOutline,
+  isStructuredReaderOutline,
+  buildReaderTocFromIndexItems,
   getChapterPreviewApplyStatus,
+  flattenReaderOutline,
   linkChaptersByPageRange,
   summarizeChapter,
   askBookQuestion,
@@ -22,6 +26,10 @@ import {
 import {
   applyChapterPreviewInputSchema,
   bookFileRoleSchema,
+  readerTocInputNodeSchema,
+  readerTocFileSchema,
+  readerTocImportPayloadSchema,
+  generateReaderTocFromIndexInputSchema,
   createBookInputSchema,
   updateBookInputSchema,
   createChapterInputSchema,
@@ -41,6 +49,9 @@ import {
   type BookAiJob,
   type ChapterPreviewRow,
   type ChatSession,
+  type ReaderOutlineNode,
+  type ReaderTocInputNode,
+  type ReaderTocImportPayload,
   type PdfJsonIndex,
   type StoredJsonIndexSummary
 } from "@ai-smartbook/schema";
@@ -55,6 +66,10 @@ const ai = createAiProvider();
 const ctx: BookCoreContext = { repos, ai };
 
 const UPLOAD_ROOT = resolve(process.env.UPLOAD_DIR || "./uploads/books");
+const JSON_INDEX_ROLE = "json_index" as const;
+const READER_TOC_ROLE = "reader_toc" as const;
+const READER_TOC_SCHEMA_VERSION = "smartbook-reader-toc-v1";
+const READER_TOC_SOURCE = "manual_admin_import" as const;
 
 function decodeUploadFileName(name: string): string {
   try {
@@ -157,10 +172,244 @@ function deleteStoredBookFile(file: BookFile): void {
   repos.files.delete(file.id);
 }
 
+function parseIntFromString(raw: string): number | null {
+  const value = raw.trim();
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;
+}
+
+function parsePageFromLabel(raw: string | null): number | null {
+  if (!raw) return null;
+  const match = raw.match(/\d+/);
+  if (!match) return null;
+  return parseIntFromString(match[0]);
+}
+
+function stripPageLabelFromTitle(rawTitle: string): { title: string; page: number | null } {
+  const trimmed = rawTitle.trim();
+  const prefixed = trimmed.match(/^\[\s*p\.?\s*(\d+)\s*\]\s*(.+)$/i);
+  if (prefixed) {
+    return { title: prefixed[2].trim(), page: parseIntFromString(prefixed[1]) };
+  }
+
+  const suffixed = trimmed.match(/^(.*?)\s+(?:\[\s*)?p\.?\s*(\d+)\s*(?:\]|\))?\s*$/i);
+  if (suffixed) {
+    return { title: suffixed[1].trim(), page: parseIntFromString(suffixed[2]) };
+  }
+
+  return { title: trimmed, page: null };
+}
+
+function normalizeReaderTocNode(
+  raw: {
+    id?: string;
+    title: string;
+    level?: number;
+    page?: number | null;
+    displayPage?: string | null;
+    children?: unknown;
+  },
+  inheritedLevel: number,
+  path: string[],
+  source: ReaderOutlineNode["source"] = "manual_toc"
+): ReaderOutlineNode {
+  const explicitLevel =
+    typeof raw.level === "number" && Number.isInteger(raw.level) && raw.level > 0 ? raw.level : undefined;
+  const level = explicitLevel ?? inheritedLevel;
+  const pageFromDisplay = parsePageFromLabel(raw.displayPage ?? null);
+  const page = parseIntFromString(String(raw.page ?? pageFromDisplay ?? "")) ?? null;
+  const children = Array.isArray(raw.children) ? raw.children : [];
+  return {
+    id: raw.id ?? `${source}-${path.join("-")}`,
+    title: raw.title.trim(),
+    level,
+    page,
+    pdfPage: page,
+    displayPage: raw.displayPage ?? (page != null ? String(page) : null),
+    children: children.map((child, index) =>
+      normalizeReaderTocNode(
+        child as {
+          id?: string;
+          title: string;
+          level?: number;
+          page?: number | null;
+          displayPage?: string | null;
+          children?: unknown;
+        },
+        level + 1,
+        [...path, String(index + 1)],
+        source
+      )
+    ),
+    source
+  };
+}
+
+function normalizeReaderTocNodes(raw: ReaderTocInputNode[]): ReaderOutlineNode[] {
+  return raw
+    .filter((item) => item && typeof item === "object" && typeof item.title === "string" && item.title.trim())
+    .map((item, index) =>
+      normalizeReaderTocNode(
+        {
+          id: item.id,
+          title: item.title,
+          level: item.level,
+          page: item.page,
+          displayPage: item.displayPage,
+          children: item.children
+        },
+        1,
+        [`manual-toc-root`, String(index + 1)],
+        "manual_toc"
+      )
+    );
+}
+
+function parseReaderTocMarkdown(content: string): ReaderOutlineNode[] {
+  const lines = content.replace(/\r/g, "").split("\n");
+  const roots: ReaderOutlineNode[] = [];
+  const stack: Array<{ level: number; node: ReaderOutlineNode }> = [];
+
+  function add(level: number, title: string, page: number | null): ReaderOutlineNode | null {
+    if (!title) return null;
+    const node: ReaderOutlineNode = {
+      id: `manual-toc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${roots.length + 1}`,
+      title,
+      level: Math.max(1, level),
+      page,
+      pdfPage: page,
+      displayPage: page != null ? String(page) : null,
+      children: [],
+      source: "manual_toc"
+    };
+
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      stack[stack.length - 1].node.children.push(node);
+    }
+
+    stack.push({ level: node.level, node });
+    return node;
+  }
+
+  for (const rawLine of lines) {
+    const headingMatch = rawLine.match(/^(#{1,2})\s+(.*)$/);
+    if (headingMatch) {
+      const headingLevel = headingMatch[1].length;
+      const parsed = stripPageLabelFromTitle(headingMatch[2]);
+      add(headingLevel, parsed.title, parsed.page);
+      continue;
+    }
+
+    const bulletMatch = rawLine.match(/^(\s*)[-*+]\s+(.*)$/);
+    if (!bulletMatch) {
+      continue;
+    }
+
+    const parsed = stripPageLabelFromTitle(bulletMatch[2]);
+    // Bullet depth comes only from leading indentation, never from the current
+    // stack top — otherwise flat sibling bullets cascade into deeper levels.
+    const indent = Math.floor(bulletMatch[1].replace(/\t/g, "    ").length / 2);
+    const level = 2 + indent;
+    add(level, parsed.title, parsed.page);
+  }
+
+  return roots;
+}
+
+function toReaderTocInputNodes(nodes: ReaderOutlineNode[]): ReaderTocInputNode[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    title: node.title,
+    level: node.level,
+    page: node.page,
+    displayPage: node.displayPage ?? null,
+    children: toReaderTocInputNodes(node.children)
+  }));
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseReaderTocImportFromPayload(
+  bookId: string,
+  payload: ReaderTocImportPayload
+): { file: { schemaVersion: string; bookId: string; source: string; items: ReaderTocInputNode[] }; outline: ReaderOutlineNode[] } {
+  if (payload.format === "markdown") {
+    const outline = parseReaderTocMarkdown(payload.content);
+    if (outline.length === 0) {
+      throw new Error("No valid TOC entries found in markdown content.");
+    }
+    return {
+      outline,
+      file: {
+        schemaVersion: READER_TOC_SCHEMA_VERSION,
+        bookId,
+        source: READER_TOC_SOURCE,
+        items: toReaderTocInputNodes(outline)
+      }
+    };
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(payload.content);
+  } catch (error) {
+    throw new Error("Invalid JSON content.");
+  }
+
+  if (isRecordValue(raw) && raw.schemaVersion === READER_TOC_SCHEMA_VERSION) {
+    const parsed = readerTocFileSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error("Invalid JSON structure for manual TOC file.");
+    }
+    if (parsed.data.bookId !== bookId) {
+      throw new Error(`JSON bookId mismatch: ${parsed.data.bookId}`);
+    }
+    const outline = normalizeReaderTocNodes(parsed.data.items);
+    if (outline.length === 0) {
+      throw new Error("JSON TOC payload has no outline items.");
+    }
+    return {
+      outline,
+      file: {
+        schemaVersion: parsed.data.schemaVersion,
+        bookId: parsed.data.bookId,
+        source: parsed.data.source,
+        items: parsed.data.items
+      }
+    };
+  }
+
+  const fallbackItems = readerTocInputNodeSchema.array().safeParse(raw);
+  if (!fallbackItems.success) {
+    throw new Error("Invalid JSON structure. Expect schemaVersion payload or a raw items array.");
+  }
+  const outline = normalizeReaderTocNodes(fallbackItems.data);
+  if (outline.length === 0) {
+    throw new Error("JSON TOC payload has no outline items.");
+  }
+  return {
+    outline,
+    file: {
+      schemaVersion: READER_TOC_SCHEMA_VERSION,
+      bookId,
+      source: READER_TOC_SOURCE,
+      items: fallbackItems.data
+    }
+  };
+}
+
 // ---- JSON index artifacts / QA reference ---------------------------------
 // Stored JSON indexes are managed `book_files` with role "json_index". The
 // active QA reference is a per-book pointer in app_settings (no migration).
-const JSON_INDEX_ROLE = "json_index" as const;
 const jsonUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 function qaReferenceKey(bookId: string): string {
@@ -191,6 +440,43 @@ function readStoredJsonIndex(file: BookFile): PdfJsonIndex | null {
   } catch {
     return null;
   }
+}
+
+function summarizeReaderToc(nodes: ReaderOutlineNode[]) {
+  return { itemCount: flattenReaderOutline(nodes).length };
+}
+
+function readStoredReaderToc(file: BookFile): ReaderOutlineNode[] | null {
+  if (file.role !== READER_TOC_ROLE) return null;
+  try {
+    const raw = JSON.parse(readFileSync(file.filePath, "utf8"));
+    const parsed = readerTocFileSchema.safeParse(raw);
+    if (!parsed.success) return null;
+    return normalizeReaderTocNodes(parsed.data.items);
+  } catch {
+    return null;
+  }
+}
+
+/** Persist a manual TOC JSON document as a managed book_file. */
+function writeReaderTocArtifact(bookId: string, payload: { schemaVersion: string; bookId: string; source: string; items: unknown[] }) {
+  const dir = resolve(UPLOAD_ROOT, bookId);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const path = resolve(dir, `${Date.now()}_reader_toc.json`);
+  writeFileSync(path, JSON.stringify(payload, null, 2), "utf8");
+  return path;
+}
+
+function findLatestReaderTocFile(bookId: string): { file: BookFile | null; outline: ReaderOutlineNode[] | null } {
+  const files = repos.files
+    .findByBookId(bookId)
+    .filter((file) => file.role === READER_TOC_ROLE)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  for (const file of files) {
+    const outline = readStoredReaderToc(file);
+    if (outline) return { file, outline };
+  }
+  return { file: null, outline: null };
 }
 
 /** Build the lightweight admin-list summary for a stored JSON index file. */
@@ -818,6 +1104,9 @@ app.post("/api/admin/books/:bookId/files", upload.single("file"), (req, res) => 
   if (!parsedRole.success) return fail(res, 400, parsedRole.error.message);
 
   const role = parsedRole.data;
+  if (role === READER_TOC_ROLE) {
+    return fail(res, 400, "Use /reader-toc/import to create structured TOC files.");
+  }
   const relatedFileId =
     typeof req.body?.relatedFileId === "string" && req.body.relatedFileId.trim() !== ""
       ? req.body.relatedFileId.trim()
@@ -1109,6 +1398,156 @@ app.delete("/api/admin/books/:bookId/json-indexes/:indexFileId", (req, res) => {
   }
 });
 
+app.post("/api/admin/books/:bookId/reader-toc/import", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const parsed = readerTocImportPayloadSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+
+  try {
+    const { outline, file } = parseReaderTocImportFromPayload(book.id, parsed.data);
+    const path = writeReaderTocArtifact(book.id, file);
+
+    const previous = repos.files.findByBookId(book.id).filter((item) => item.role === READER_TOC_ROLE);
+    for (const candidate of previous) {
+      deleteStoredBookFile(candidate);
+    }
+
+    const record = repos.files.create({
+      bookId: book.id,
+      fileName: `${file.source}-${Date.now()}.json`,
+      filePath: path,
+      fileType: "application/json",
+      fileSize: Buffer.byteLength(JSON.stringify(file), "utf8"),
+      role: READER_TOC_ROLE,
+      relatedFileId: null,
+      parseStatus: "parsed"
+    });
+
+    res.status(201).json({
+      source: "manual_toc",
+      file: {
+        fileId: record.id,
+        fileName: record.fileName,
+        createdAt: record.createdAt,
+        itemCount: summarizeReaderToc(outline).itemCount
+      },
+      outline
+    });
+  } catch (err) {
+    fail(res, 400, err instanceof Error ? err.message : "import manual TOC failed");
+  }
+});
+
+app.get("/api/admin/books/:bookId/reader-toc", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const latest = findLatestReaderTocFile(book.id);
+  if (!latest.file || !latest.outline) {
+    return res.json({ source: "manual_toc", file: null, outline: [] as ReaderOutlineNode[] });
+  }
+
+  res.json({
+    source: "manual_toc",
+    file: {
+      fileId: latest.file.id,
+      fileName: latest.file.fileName,
+      createdAt: latest.file.createdAt,
+      itemCount: summarizeReaderToc(latest.outline).itemCount
+    },
+    outline: latest.outline
+  });
+});
+
+app.delete("/api/admin/books/:bookId/reader-toc", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const files = repos.files.findByBookId(book.id).filter((file) => file.role === READER_TOC_ROLE);
+  if (files.length === 0) {
+    return res.json({ deleted: 0 });
+  }
+
+  for (const file of files) {
+    deleteStoredBookFile(file);
+  }
+
+  res.json({ deleted: files.length });
+});
+
+// Generate a compact reader TOC from an already-stored JSON index file. The
+// large index never travels through the request body — only its file id + page
+// range — so this avoids the 413 that pasting a full sentence index causes.
+app.post("/api/admin/books/:bookId/reader-toc/generate-from-json-index", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const parsed = generateReaderTocFromIndexInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+
+  const indexFile = repos.files.findById(parsed.data.jsonIndexFileId);
+  if (!indexFile || indexFile.bookId !== book.id) return fail(res, 404, "JSON index not found");
+  if (indexFile.role !== JSON_INDEX_ROLE) {
+    return fail(res, 400, "Selected file is not a json_index file");
+  }
+  const index = readStoredJsonIndex(indexFile);
+  if (!index) return fail(res, 400, "Stored JSON index is not a valid smartbook-pdf-index-v1 file");
+
+  try {
+    const { outline, lines, warnings } = buildReaderTocFromIndexItems(
+      index.items,
+      parsed.data.pageStart,
+      parsed.data.pageEnd
+    );
+    if (outline.length === 0) {
+      return fail(
+        res,
+        400,
+        warnings[0] ?? "No chapter/section headings were found in the selected page range."
+      );
+    }
+
+    const file = {
+      schemaVersion: READER_TOC_SCHEMA_VERSION,
+      bookId: book.id,
+      source: READER_TOC_SOURCE,
+      items: toReaderTocInputNodes(outline)
+    };
+    const path = writeReaderTocArtifact(book.id, file);
+
+    // Replace any previous manual TOC so the latest one is the active source.
+    for (const candidate of repos.files.findByBookId(book.id).filter((f) => f.role === READER_TOC_ROLE)) {
+      deleteStoredBookFile(candidate);
+    }
+    const record = repos.files.create({
+      bookId: book.id,
+      fileName: `${READER_TOC_SOURCE}-${Date.now()}.json`,
+      filePath: path,
+      fileType: "application/json",
+      fileSize: Buffer.byteLength(JSON.stringify(file), "utf8"),
+      role: READER_TOC_ROLE,
+      relatedFileId: indexFile.id,
+      parseStatus: "parsed"
+    });
+
+    res.status(201).json({
+      source: "manual_toc",
+      file: {
+        fileId: record.id,
+        fileName: record.fileName,
+        createdAt: record.createdAt,
+        itemCount: summarizeReaderToc(outline).itemCount
+      },
+      outline,
+      textPreview: lines.slice(0, 40).join("\n"),
+      warnings
+    });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "generate reader TOC failed");
+  }
+});
+
 app.post("/api/admin/books/:bookId/files/:fileId/apply-chapters", async (req, res) => {
   const book = repos.books.findById(req.params.bookId);
   if (!book) return fail(res, 404, "book not found");
@@ -1381,9 +1820,14 @@ app.get("/api/student/books/:bookId", (req, res) => {
   });
 });
 
-app.get("/api/student/books/:bookId/outline", (req, res) => {
+app.get("/api/student/books/:bookId/outline", async (req, res) => {
   const book = findPublishedBook(String(req.params.bookId));
   if (!book) return fail(res, 404, "book not found");
+
+  const manualToc = findLatestReaderTocFile(book.id);
+  if (manualToc.outline && manualToc.outline.length > 0) {
+    return res.json({ bookId: book.id, source: "manual_toc", outline: manualToc.outline });
+  }
 
   const jsonIndexFiles = repos.files
     .findByBookId(book.id)
@@ -1406,14 +1850,39 @@ app.get("/api/student/books/:bookId/outline", (req, res) => {
     const index = readStoredJsonIndex(file);
     if (!index) continue;
     const outline = normalizeReaderOutline(index, "split_json");
-    if (outline.length > 0) {
+    if (outline.length > 0 && isStructuredReaderOutline(outline)) {
       return res.json({ bookId: book.id, source: "split_json", outline });
     }
   }
 
   const chapters = repos.chapters.findByBookId(book.id);
   const outline = normalizeChaptersToReaderOutline(chapters, "chapter_table");
-  res.json({ bookId: book.id, source: "chapter_table", outline });
+  if (outline.length > 0 && isStructuredReaderOutline(outline)) {
+    return res.json({ bookId: book.id, source: "chapter_table", outline });
+  }
+
+  const sourcePdf = findPrimaryPdfSourceFile(book.id);
+  if (sourcePdf && isPdfBookFile(sourcePdf) && existsSync(sourcePdf.filePath)) {
+    const fallbackEntries = await extractPdfOutline(sourcePdf.filePath);
+    const fallbackOutline = normalizeReaderOutline(
+      fallbackEntries.map((entry, index) => ({
+        id: `pdf-outline-${index + 1}`,
+        title: entry.title,
+        level: (entry.level ?? 0) + 1,
+        page: entry.pageNumber,
+        pdfPage: entry.pageNumber,
+        displayPage: entry.pageNumber != null ? String(entry.pageNumber) : null,
+        children: [],
+        source: "pdf_outline" as const
+      })),
+      "pdf_outline"
+    );
+    if (fallbackOutline.length > 0) {
+      return res.json({ bookId: book.id, source: "pdf_outline", outline: fallbackOutline });
+    }
+  }
+
+  res.json({ bookId: book.id, source: "fallback", outline: [] });
 });
 
 app.get("/api/student/books/:bookId/contents", (req, res) => {

@@ -3,7 +3,7 @@ import { z } from "zod";
 export const parseStatusSchema = z.enum(["pending", "parsed", "failed"]);
 export type ParseStatus = z.infer<typeof parseStatusSchema>;
 
-export const bookFileRoleSchema = z.enum(["source_document", "reference_image", "json_index"]);
+export const bookFileRoleSchema = z.enum(["source_document", "reference_image", "json_index", "reader_toc"]);
 export type BookFileRole = z.infer<typeof bookFileRoleSchema>;
 
 export const bookFileSchema = z.object({

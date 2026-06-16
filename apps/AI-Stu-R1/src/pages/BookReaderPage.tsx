@@ -103,19 +103,38 @@ function flattenOutline(nodes: ReaderOutlineNode[]): ReaderOutlineNode[] {
 }
 
 function chaptersToFallbackOutline(chapters: BookChapter[]): ReaderOutlineNode[] {
-  return chapters
+  const nodes = chapters
     .slice()
     .sort((a, b) => a.orderIndex - b.orderIndex)
-    .map((chapter) => ({
-      id: chapter.id,
-      title: chapter.title,
-      level: Math.max(1, (chapter.level ?? 0) + 1),
-      page: chapter.pageStart ?? null,
-      pdfPage: chapter.pageStart ?? null,
-      displayPage: chapter.pageStart != null ? String(chapter.pageStart) : null,
-      children: [],
-      source: chapter.source === "pdf_outline" ? "pdf_outline" : "chapter_table"
-    }));
+      .map((chapter) => ({
+        id: chapter.id,
+        title: chapter.title,
+        level: Math.max(1, (chapter.level ?? 0) + 1),
+        page: chapter.pageStart ?? null,
+        pdfPage: chapter.pageStart ?? null,
+        displayPage: chapter.pageStart != null ? String(chapter.pageStart) : null,
+        children: [],
+        source: (chapter.source === "pdf_outline" ? "pdf_outline" : "chapter_table") as ReaderOutlineNode["source"]
+      }));
+
+  const stack: ReaderOutlineNode[] = [];
+  const roots: ReaderOutlineNode[] = [];
+
+  for (const node of nodes) {
+    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      stack[stack.length - 1].children.push(node);
+    }
+
+    stack.push(node);
+  }
+
+  return roots;
 }
 
 /** Draggable vertical split handle. Reports pointer dx so the parent clamps. */

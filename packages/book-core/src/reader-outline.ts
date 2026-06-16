@@ -15,16 +15,12 @@ function isRecord(value: unknown): value is ObjectRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
 function stringValue(value: unknown): string | null {
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
   }
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "number" && Number.isInteger(value)) return String(value);
   return null;
 }
 
@@ -74,6 +70,87 @@ function rootValues(input: unknown): unknown[] {
   return [];
 }
 
+function normalizeTitle(value: string): string {
+  return value.trim().replace(/\s+/g, " ").replace(/\s+(?=[,，。．.!?！？:：])/g, "");
+}
+
+function compactTitle(value: string): string {
+  return value.replace(/\s+/g, "").trim();
+}
+
+function stripOutlineNumbering(title: string): string {
+  return normalizeTitle(title)
+    .replace(/^\d{1,3}\s*[—\-－]\s*/u, "")
+    .replace(/^0+(?=[前後])/u, "");
+}
+
+function parsePrintedPageLabelFromTitle(title: string): string | null {
+  const stripped = stripOutlineNumbering(title);
+  const match = compactTitle(stripped).match(
+    /^((前|後)?\d{1,4}(?:\s*[~～〜]\s*\d{1,4}(?:[\+＋]\d+[A-Za-z]*)?)?)/u
+  );
+  return match ? match[1] : null;
+}
+
+function suggestChapterTitleFromOutline(title: string): string {
+  const stripped = stripOutlineNumbering(title);
+  const printed = parsePrintedPageLabelFromTitle(title);
+  let remainder = stripped;
+
+  if (printed && remainder.startsWith(printed)) {
+    remainder = remainder.slice(printed.length);
+  }
+
+  return remainder.replace(/^[—\-－:：]+/u, "").trim() || normalizeTitle(title);
+}
+
+function normalizeOutlineTitle(title: string | null): string {
+  return title == null ? "" : suggestChapterTitleFromOutline(title);
+}
+
+function isPdfStyleFlatTitle(title: string): boolean {
+  const compact = compactTitle(title);
+  if (/^(0+\d+)?(前|後)?\d{1,4}(?:[～〜~]\d{1,4}(?:[\+＋]\d+[A-Za-z]*)?)?/.test(compact)) return true;
+  if (/^第\d+章/.test(compact)) return true;
+  if (/^第\d+章$/.test(compact)) return true;
+  if (/^第[零一二三四五六七八九十百千兩]+章$/.test(compact)) return true;
+  if (/^第\d+節$/.test(compact)) return true;
+  if (/^第[零一二三四五六七八九十百千兩]+節$/.test(compact)) return true;
+  if (/^[前後]?目錄$/.test(compact)) return true;
+  if (/^(目錄|自序|前言|序言|附錄|參考文獻)/.test(compact)) return true;
+  return false;
+}
+
+function buildOutlineTree(nodes: ReaderOutlineNode[]): ReaderOutlineNode[] {
+  const cloned = nodes.map((node) => ({ ...node, children: [...node.children] }));
+  const roots: ReaderOutlineNode[] = [];
+  const stack: ReaderOutlineNode[] = [];
+
+  for (const node of cloned) {
+    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      stack[stack.length - 1].children.push(node);
+    }
+
+    stack.push(node);
+  }
+
+  return roots;
+}
+
+function hasNested(nodes: ReaderOutlineNode[]): boolean {
+  for (const node of nodes) {
+    if (node.level > 1 || node.children.length > 0) return true;
+    if (hasNested(node.children)) return true;
+  }
+  return false;
+}
+
 function normalizePdfIndexItems(input: ObjectRecord, source: ReaderOutlineSource): ReaderOutlineNode[] | null {
   if (input.schemaVersion !== "smartbook-pdf-index-v1" || !Array.isArray(input.items)) return null;
   const byChapter = new Map<string, ReaderOutlineNode>();
@@ -91,7 +168,7 @@ function normalizePdfIndexItems(input: ObjectRecord, source: ReaderOutlineSource
       if (!title) return;
       directNodes.push({
         id: chapterId ?? firstString(raw, ["id"]) ?? `${source}-chapter-${index + 1}`,
-        title,
+        title: normalizeOutlineTitle(title),
         level: 1,
         page,
         pdfPage: page,
@@ -115,7 +192,7 @@ function normalizePdfIndexItems(input: ObjectRecord, source: ReaderOutlineSource
     }
     byChapter.set(key, {
       id: chapterId ?? `${source}-chapter-${byChapter.size + 1}`,
-      title: chapterTitle,
+      title: normalizeOutlineTitle(chapterTitle),
       level: 1,
       page,
       pdfPage: page,
@@ -126,8 +203,8 @@ function normalizePdfIndexItems(input: ObjectRecord, source: ReaderOutlineSource
   });
 
   const grouped = [...byChapter.values()];
-  if (directNodes.length > 0) return directNodes;
-  return grouped.length > 0 ? grouped : null;
+  if (directNodes.length > 0) return buildOutlineTree(directNodes);
+  return grouped.length > 0 ? buildOutlineTree(grouped) : null;
 }
 
 function normalizeNode(
@@ -149,7 +226,7 @@ function normalizeNode(
 
   return {
     id,
-    title: title ?? `Section ${path.join(".")}`,
+    title: normalizeOutlineTitle(title ?? `Section ${path.join(".")}`),
     level,
     page,
     pdfPage: parsePage(raw.pdfPage) ?? page,
@@ -164,9 +241,7 @@ function normalizeFlatItems(items: unknown[], source: ReaderOutlineSource): Read
     .map((item, index) => normalizeNode(item, [index + 1], source, 1))
     .filter((node): node is ReaderOutlineNode => node != null);
 
-  // Flat chapter-like JSON indexes have no children. Return them directly; the
-  // UI still gets page mapping and active state without inventing hierarchy.
-  return nodes;
+  return buildOutlineTree(nodes);
 }
 
 export function normalizeReaderOutline(input: unknown, source: ReaderOutlineSource = "split_json"): ReaderOutlineNode[] {
@@ -179,22 +254,151 @@ export function normalizeReaderOutline(input: unknown, source: ReaderOutlineSour
   return normalizeFlatItems(roots, source);
 }
 
+export function isStructuredReaderOutline(nodes: ReaderOutlineNode[]): boolean {
+  if (hasNested(nodes)) return true;
+  if (nodes.length === 0) return false;
+  return !nodes.every((node) => isPdfStyleFlatTitle(node.title));
+}
+
 export function normalizeChaptersToReaderOutline(
   chapters: BookChapter[],
   source: ReaderOutlineSource = "chapter_table"
 ): ReaderOutlineNode[] {
-  return [...chapters]
-    .sort((a, b) => a.orderIndex - b.orderIndex)
-    .map((chapter, index) => ({
-      id: chapter.id,
-      title: chapter.title.trim() || `Chapter ${index + 1}`,
-      level: Math.max(1, (chapter.level ?? 0) + 1),
-      page: chapter.pageStart ?? null,
-      pdfPage: chapter.pageStart ?? null,
-      displayPage: chapter.pageStart != null ? String(chapter.pageStart) : null,
-      children: [],
-      source: chapter.source === "pdf_outline" ? "pdf_outline" : source
-    }));
+  return buildOutlineTree(
+    [...chapters]
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((chapter, index) => ({
+        id: chapter.id,
+        title: normalizeOutlineTitle(chapter.title.trim() || `Chapter ${index + 1}`),
+        level: Math.max(1, (chapter.level ?? 0) + 1),
+        page: chapter.pageStart ?? null,
+        pdfPage: chapter.pageStart ?? null,
+        displayPage: chapter.pageStart != null ? String(chapter.pageStart) : null,
+        children: [],
+        source: chapter.source === "pdf_outline" ? "pdf_outline" : source
+      }))
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reader TOC from a stored PDF JSON index (page-range slice + heading parser)
+// ---------------------------------------------------------------------------
+
+/** Minimal shape of a PDF JSON index item used for TOC extraction. */
+export interface PdfIndexItemLike {
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  page?: number | null;
+  pageNumber?: number | null;
+  text?: string | null;
+}
+
+const CHAPTER_HEADING_RE = /第\s*[零一二三四五六七八九十百千兩0-9]+\s*章/u;
+const SECTION_HEADING_RE = /第\s*[零一二三四五六七八九十百千兩0-9]+\s*節/u;
+const ENUM_HEADING_RE = /^[（(]?\s*[一二三四五六七八九十]+\s*[、，．.)）]/u;
+
+function indexItemPage(item: PdfIndexItemLike): number | null {
+  return parsePage(item.pageStart ?? item.page ?? item.pageNumber ?? item.pageEnd ?? null);
+}
+
+/** Strip trailing dot-leaders / page numbers and collapse whitespace. */
+function cleanHeadingTitle(value: string): string {
+  return normalizeTitle(
+    value
+      .replace(/[\.．·・…\s]{2,}\d*\s*$/u, "")
+      .replace(/\s*\d{1,4}\s*$/u, "")
+  ).trim();
+}
+
+/**
+ * Build a chapter/section reader outline from a stored PDF JSON index, limited
+ * to items whose page falls within [pageStart, pageEnd]. Headings are detected
+ * structurally (第X章 / 第X節 / 一、二、三) and raw bookmark prefixes such as
+ * "01－1～37＋1第1章" are dropped by slicing from the heading marker.
+ */
+export function buildReaderTocFromIndexItems(
+  items: PdfIndexItemLike[],
+  pageStart: number,
+  pageEnd: number
+): { outline: ReaderOutlineNode[]; lines: string[]; warnings: string[] } {
+  const lo = Math.min(pageStart, pageEnd);
+  const hi = Math.max(pageStart, pageEnd);
+  const warnings: string[] = [];
+
+  const scoped = items
+    .map((item, index) => ({ item, index, page: indexItemPage(item) }))
+    .filter((entry) => entry.page != null && entry.page >= lo && entry.page <= hi)
+    .sort((a, b) => (a.page! - b.page!) || (a.index - b.index));
+
+  if (scoped.length === 0) {
+    warnings.push(`No index items found in page range ${lo}-${hi}.`);
+    return { outline: [], lines: [], warnings };
+  }
+
+  const flat: ReaderOutlineNode[] = [];
+  const matchedLines: string[] = [];
+  let lastTitle = "";
+  let seq = 0;
+
+  for (const entry of scoped) {
+    const text = typeof entry.item.text === "string" ? entry.item.text : "";
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      let level: 1 | 2 | null = null;
+      let title = "";
+
+      // A real heading is short and does not end like a full sentence; this
+      // rejects body sentences that merely contain "第X章/節" mid-text.
+      const endsLikeSentence = /[。．.!！?？]\s*$/u.test(line);
+      if (!endsLikeSentence && line.length <= 48) {
+        const chapter = line.match(CHAPTER_HEADING_RE);
+        const section = line.match(SECTION_HEADING_RE);
+        if (chapter && (chapter.index ?? 99) <= 12) {
+          level = 1;
+          title = cleanHeadingTitle(line.slice(chapter.index ?? 0));
+        } else if (section && (section.index ?? 99) <= 14) {
+          level = 2;
+          title = cleanHeadingTitle(line.slice(section.index ?? 0));
+        } else if (ENUM_HEADING_RE.test(line)) {
+          level = 2;
+          title = cleanHeadingTitle(line);
+        }
+      }
+
+      if (level == null || !title) continue;
+      // Drop exact consecutive duplicates (sentence index repeats headings).
+      if (title === lastTitle) continue;
+      lastTitle = title;
+      seq += 1;
+      matchedLines.push(`${level === 1 ? "" : "  "}${title}`);
+      flat.push({
+        id: `manual-toc-${seq}`,
+        title,
+        level,
+        page: entry.page,
+        pdfPage: entry.page,
+        displayPage: entry.page != null ? String(entry.page) : null,
+        children: [],
+        source: "manual_toc"
+      });
+    }
+  }
+
+  if (flat.length === 0) {
+    warnings.push("No chapter/section heading lines were detected in the selected page range.");
+    return { outline: [], lines: [], warnings };
+  }
+  if (!flat.some((node) => node.level === 1)) {
+    warnings.push("No chapter (第X章) heading detected; sections have no parent chapter.");
+  }
+
+  const outline = buildOutlineTree(flat);
+  if (!hasNested(outline)) {
+    warnings.push("Generated outline has no nested sections (chapters only).");
+  }
+  return { outline, lines: matchedLines, warnings };
 }
 
 export function flattenReaderOutline(nodes: ReaderOutlineNode[]): ReaderOutlineNode[] {

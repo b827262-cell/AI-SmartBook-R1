@@ -72,9 +72,7 @@ export function ChapterSidebar({
               title={node.page != null ? `Jump to PDF page ${node.page}` : "No PDF page mapping"}
             >
               <span className="toc-node-title">{node.title}</span>
-              {node.level <= 1 && node.page != null ? (
-                <span className="toc-node-page">p.{node.page}</span>
-              ) : null}
+              {node.page != null ? <span className="toc-node-page">p.{node.page}</span> : null}
             </button>
           </div>
           {hasChildren && isExpanded ? <ul>{renderNodes(node.children)}</ul> : null}
@@ -87,7 +85,17 @@ export function ChapterSidebar({
     <aside className="reader-toc" style={width != null ? { width } : undefined}>
       <div className="toc-head">
         <h4>章節目錄</h4>
-        <span>{outlineSource === "split_json" ? "JSON" : "Fallback"}</span>
+        <span>
+          {outlineSource === "split_json"
+            ? "JSON"
+            : outlineSource === "chapter_table"
+              ? "章節表"
+              : outlineSource === "manual_toc"
+                ? "手動目錄"
+              : outlineSource === "pdf_outline"
+                ? "PDF"
+                : "Fallback"}
+        </span>
       </div>
       <ul className="chapter-list">
         <li>

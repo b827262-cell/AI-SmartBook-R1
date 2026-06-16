@@ -11,6 +11,8 @@ import type {
   BookQaLog,
   ChapterPreviewRow,
   GeneratePdfJsonIndexInput,
+  ReaderOutlineNode,
+  ReaderOutlineSource,
   PdfJsonIndex,
   StoredJsonIndexSummary,
   CreateBookInput,
@@ -24,6 +26,29 @@ export interface ChapterInput {
   pageEnd?: number | null;
   level?: number;
   summary?: string | null;
+}
+
+export interface ReaderTocImportPayload {
+  format: "json" | "markdown";
+  content: string;
+}
+
+export interface ReaderTocSummary {
+  fileId: string;
+  fileName: string;
+  createdAt: string;
+  itemCount: number;
+}
+
+export interface ReaderTocResponse {
+  source: ReaderOutlineSource;
+  file: ReaderTocSummary | null;
+  outline: ReaderOutlineNode[];
+}
+
+export interface GenerateReaderTocResponse extends ReaderTocResponse {
+  textPreview: string;
+  warnings: string[];
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -58,6 +83,31 @@ export const adminApi = {
     http<{ book: Book; chapters: BookChapter[]; files: BookFile[] }>(
       `/api/admin/books/${bookId}`
     ),
+
+  importReaderToc: (bookId: string, payload: ReaderTocImportPayload) =>
+    http<ReaderTocResponse>(`/api/admin/books/${bookId}/reader-toc/import`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+
+  getReaderToc: (bookId: string) => http<ReaderTocResponse>(`/api/admin/books/${bookId}/reader-toc`),
+
+  // Generate a reader TOC from an already-stored JSON index (no large body upload).
+  generateReaderTocFromJsonIndex: (
+    bookId: string,
+    jsonIndexFileId: string,
+    pageStart: number,
+    pageEnd: number
+  ) =>
+    http<GenerateReaderTocResponse>(
+      `/api/admin/books/${bookId}/reader-toc/generate-from-json-index`,
+      { method: "POST", body: JSON.stringify({ jsonIndexFileId, pageStart, pageEnd }) }
+    ),
+
+  deleteReaderToc: (bookId: string) =>
+    http<{ deleted: number }>(`/api/admin/books/${bookId}/reader-toc`, {
+      method: "DELETE"
+    }),
 
   updateBook: (bookId: string, input: UpdateBookInput) =>
     http<{ book: Book }>(`/api/admin/books/${bookId}`, {
