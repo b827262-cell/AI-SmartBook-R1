@@ -917,13 +917,6 @@ export function BookReaderPage() {
             className={`reader-mobile-action-btn ${isMobileChatOpen ? "active" : ""}`}
             onClick={() => revealAiPanelWithPrefill(null)}
           >
-            歷史
-          </button>
-          <button
-            type="button"
-            className={`reader-mobile-action-btn ${isMobileChatOpen ? "active" : ""}`}
-            onClick={() => revealAiPanelWithPrefill(null)}
-          >
             問AI
           </button>
           <button
