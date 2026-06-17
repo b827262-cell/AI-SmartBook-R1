@@ -1034,21 +1034,30 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
     width: 100% !important;
     max-width: 100%;
   }
-  /* Force the Android snapshot <img> to be the visible top PDF layer inside the
-     pinned mobile viewport; hide the live canvas and the text layer behind it. */
+  /* Android Chrome does not paint the snapshot in normal flow (relative stacking
+     is insufficient), so pin it as a fixed visible layer between the reader
+     chrome and the bottom action bar. z-index 70 stays below the action bar (75)
+     and bottom sheets (80); max-height + object-fit keep it off the action bar. */
   .reader-layout-mobile .pdf-page-stack.has-snapshot {
     position: relative;
     width: 100%;
   }
   .reader-layout-mobile .pdf-page-stack.has-snapshot .pdf-canvas-snapshot {
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    position: relative;
-    z-index: 50;
+    position: fixed !important;
+    top: var(--mobile-reader-top, 200px);
+    left: 0;
+    right: 0;
     width: 100% !important;
     max-width: 100%;
     height: auto !important;
+    max-height: calc(
+      100dvh - var(--mobile-reader-top, 200px) - var(--mobile-reader-bottom, 74px)
+    );
+    object-fit: contain;
+    z-index: 70;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
     margin: 0 auto;
     background: #fff;
   }
