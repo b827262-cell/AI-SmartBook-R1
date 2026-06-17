@@ -8,7 +8,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const WATERMARK_TILES = Array.from({ length: 8 }, (_, i) => i);
 // Cap the canvas backing-store so very high zoom does not hit browser limits.
-const MAX_CANVAS_PIXELS = 24_000_000;
+// Lowered to 16M for safer mobile rendering.
+const MAX_CANVAS_PIXELS = 16_777_216;
 
 /**
  * Renders the protected PDF blob with PDF.js onto a <canvas>. Page navigation
@@ -53,8 +54,10 @@ export function ProtectedPdfViewer({
     setMessage("");
     (async () => {
       try {
+        console.log("[PdfViewer] Fetching doc, blob size:", blob.size);
         const data = new Uint8Array(await blob.arrayBuffer());
         const doc = await pdfjsLib.getDocument({ data }).promise;
+        console.log("[PdfViewer] Doc loaded, pages:", doc.numPages);
         if (cancelled) {
           void doc.destroy();
           return;
@@ -62,9 +65,10 @@ export function ProtectedPdfViewer({
         docRef.current = doc;
         onPageCount?.(doc.numPages);
         setStatus("ready");
-      } catch (err) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
+      } catch (err: any) {
+        if (err?.name === "RenderingCancelledException") return;
+        console.error("[PdfViewer] PDF render error:", err);
+        const msg = `無法載入 PDF 或渲染失敗：${err?.message || String(err)}`;
         setMessage(msg);
         setStatus("error");
         onError?.(msg);
@@ -109,11 +113,15 @@ export function ProtectedPdfViewer({
         }
 
         const ctx = canvas.getContext("2d");
-        if (!ctx) return;
+        if (!ctx) {
+          console.error("[PdfViewer] Failed to get 2D context");
+          return;
+        }
         canvas.width = Math.floor(viewport.width * outputScale);
         canvas.height = Math.floor(viewport.height * outputScale);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
+        console.log(`[PdfViewer] Canvas sizes: CSS ${canvas.style.width}x${canvas.style.height}, attr ${canvas.width}x${canvas.height}, DPR ${outputScale}`);
 
         const task = pdfPage.render({
           canvas,
@@ -123,6 +131,7 @@ export function ProtectedPdfViewer({
         });
         renderTaskRef.current = task;
         await task.promise;
+        console.log("[PdfViewer] Page render task completed");
         renderTaskRef.current = null;
 
         // Selectable text layer overlaid on the canvas (for copy / notes / AI).

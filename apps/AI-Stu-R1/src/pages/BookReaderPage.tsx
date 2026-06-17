@@ -249,6 +249,20 @@ export function BookReaderPage() {
   const isMobile = viewportWidth <= 768;
   const isTablet = viewportWidth >= 769 && viewportWidth <= 1024;
 
+  // Ensure reader-resizing is cleaned up on unmount, blur, or pointerup outside
+  useEffect(() => {
+    const cleanup = () => document.body.classList.remove("reader-resizing");
+    window.addEventListener("blur", cleanup);
+    window.addEventListener("pointerup", cleanup);
+    window.addEventListener("visibilitychange", cleanup);
+    return () => {
+      window.removeEventListener("blur", cleanup);
+      window.removeEventListener("pointerup", cleanup);
+      window.removeEventListener("visibilitychange", cleanup);
+      cleanup();
+    };
+  }, []);
+
   // Persist pane widths so the layout survives reloads.
   useEffect(() => {
     function onResize() {
