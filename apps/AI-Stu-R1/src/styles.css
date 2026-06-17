@@ -759,6 +759,27 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
 .pdf-canvas.is-hidden { display: none; }
 .pdf-canvas-status { margin: auto; padding: 24px; text-align: center; }
 
+/* Android canvas-to-image snapshot fallback. When a snapshot exists the <img>
+   is the visible PDF page and the live canvas is hidden (kept as render source
+   with real dimensions so PDF.js can still draw into it). */
+.pdf-canvas-snapshot {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  background: #fff;
+}
+.pdf-page-stack.has-snapshot {
+  position: relative;
+}
+.pdf-page-stack.has-snapshot canvas.pdf-canvas {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 /* PDF.js selectable text layer overlaid on the canvas. Invisible glyph spans
    that enable native browser selection/copy. Inert unless selection mode is on. */
 .pdf-text-layer {

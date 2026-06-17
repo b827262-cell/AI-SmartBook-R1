@@ -11,6 +11,12 @@ const WATERMARK_TILES = Array.from({ length: 8 }, (_, i) => i);
 // Lowered to 16M for safer mobile rendering.
 const MAX_CANVAS_PIXELS = 16_777_216;
 
+/** Android Chrome/Samsung can fail to composite a live PDF.js canvas in this
+ * layout; we render a stable <img> snapshot of it there instead. */
+function isAndroidMobile(): boolean {
+  return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+}
+
 /**
  * Renders the protected PDF blob with PDF.js onto a <canvas>. Page navigation
  * and zoom are deterministic here (we choose which page to render and the
@@ -49,6 +55,27 @@ export function ProtectedPdfViewer({
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [message, setMessage] = useState("");
   const [textLayerError, setTextLayerError] = useState(false);
+  // Android-only snapshot of the rendered canvas, shown as a stable <img>.
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const snapshotUrlRef = useRef<string | null>(null);
+
+  function clearSnapshotUrl() {
+    if (snapshotUrlRef.current) {
+      URL.revokeObjectURL(snapshotUrlRef.current);
+      snapshotUrlRef.current = null;
+    }
+    setSnapshotUrl(null);
+  }
+
+  // Revoke any outstanding snapshot object URL on unmount.
+  useEffect(() => {
+    return () => {
+      if (snapshotUrlRef.current) {
+        URL.revokeObjectURL(snapshotUrlRef.current);
+        snapshotUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Measure container width to avoid calculating/rendering before layout is ready.
   useEffect(() => {
@@ -107,6 +134,8 @@ export function ProtectedPdfViewer({
     if (!doc || !canvas || status !== "ready" || containerWidth === 0) return;
 
     setTextLayerError(false);
+    // Drop the previous page's snapshot before re-rendering.
+    clearSnapshotUrl();
     let cancelled = false;
     (async () => {
       try {
@@ -147,6 +176,18 @@ export function ProtectedPdfViewer({
         renderTaskRef.current = task;
         await task.promise;
         renderTaskRef.current = null;
+
+        // Android compositor fallback: snapshot the freshly rendered canvas to a
+        // PNG blob and display it as a stable <img>. Desktop keeps the live canvas.
+        if (isAndroidMobile()) {
+          canvas.toBlob((snapshot) => {
+            if (cancelled || !snapshot) return;
+            clearSnapshotUrl();
+            const url = URL.createObjectURL(snapshot);
+            snapshotUrlRef.current = url;
+            setSnapshotUrl(url);
+          }, "image/png");
+        }
 
         // Selectable text layer overlaid on the canvas (for copy / notes / AI).
         // Failure here must not break rendering — the page still displays.
@@ -220,8 +261,20 @@ export function ProtectedPdfViewer({
             此裝置目前無法啟用文字選取，但仍可閱讀 PDF。
           </p>
         )}
-        <div className={`pdf-page-stack ${status === "ready" ? "" : "is-hidden"}`}>
+        <div
+          className={`pdf-page-stack ${status === "ready" ? "" : "is-hidden"} ${
+            snapshotUrl ? "has-snapshot" : ""
+          }`.trim()}
+        >
           <canvas ref={canvasRef} className="pdf-canvas" />
+          {snapshotUrl && (
+            <img
+              className="pdf-canvas-snapshot"
+              src={snapshotUrl}
+              alt="PDF page"
+              aria-hidden="true"
+            />
+          )}
           <div
             ref={textLayerRef}
             className={`pdf-text-layer ${selectable ? "selectable" : ""}`}
