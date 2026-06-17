@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SmartBookNote, SmartBookNoteType } from "@ai-smartbook/schema";
 import { studentClient } from "../studentClient";
 
@@ -11,23 +11,117 @@ const TYPE_LABEL: Record<SmartBookNoteType, string> = {
   canvas: "手寫"
 };
 
+type Point = { x: number; y: number };
+interface StrokeDoc {
+  v: number;
+  w: number;
+  h: number;
+  strokes: Point[][];
+}
+
+/** Parse stored canvas data as stroke JSON. Returns null for legacy/PNG data. */
+function parseStrokeDoc(data: string | null): StrokeDoc | null {
+  if (!data || data.startsWith("data:")) return null;
+  try {
+    const d = JSON.parse(data) as Partial<StrokeDoc>;
+    if (d && Array.isArray(d.strokes)) {
+      return { v: d.v ?? 1, w: d.w ?? CANVAS_W, h: d.h ?? CANVAS_H, strokes: d.strokes };
+    }
+  } catch {
+    /* not stroke JSON */
+  }
+  return null;
+}
+
+function drawStrokes(ctx: CanvasRenderingContext2D, doc: StrokeDoc) {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, doc.w, doc.h);
+  ctx.strokeStyle = "#1f2937";
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const stroke of doc.strokes) {
+    if (stroke.length === 0) continue;
+    ctx.beginPath();
+    ctx.moveTo(stroke[0].x, stroke[0].y);
+    if (stroke.length === 1) {
+      ctx.lineTo(stroke[0].x + 0.1, stroke[0].y + 0.1);
+    } else {
+      for (let i = 1; i < stroke.length; i += 1) ctx.lineTo(stroke[i].x, stroke[i].y);
+    }
+    ctx.stroke();
+  }
+}
+
+/** Read-only preview of a stored canvas note (replays strokes; PNG fallback). */
+function CanvasNotePreview({
+  data,
+  width,
+  onClick
+}: {
+  data: string | null;
+  width: number;
+  onClick?: () => void;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const doc = useMemo(() => parseStrokeDoc(data), [data]);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !doc) return;
+    canvas.width = doc.w;
+    canvas.height = doc.h;
+    const ctx = canvas.getContext("2d");
+    if (ctx) drawStrokes(ctx, doc);
+  }, [doc]);
+
+  if (!doc) {
+    if (data && data.startsWith("data:image")) {
+      return (
+        <img
+          className="notes-canvas-thumb"
+          src={data}
+          alt="手寫筆記"
+          style={{ width }}
+          onClick={onClick}
+        />
+      );
+    }
+    return <p className="muted">（無法顯示此筆記）</p>;
+  }
+  return (
+    <canvas
+      ref={ref}
+      className="notes-canvas-thumb"
+      style={{ width, height: "auto", aspectRatio: `${doc.w} / ${doc.h}` }}
+      onClick={onClick}
+    />
+  );
+}
+
 /**
  * Smart Notes MVP panel: typed notes, saved AI answers, and a basic handwriting
- * canvas. All notes are scoped to the current book and tagged with the current
- * page / chapter context. Talks only to /api/student/* via studentClient.
+ * canvas. The canvas is persisted as compact stroke JSON (not a full PNG base64
+ * blob); previews are rendered by replaying the strokes. Notes are scoped to the
+ * current book and tagged with the current page / chapter context. Talks only to
+ * /api/student/* via studentClient.
  */
 export function SmartNotesPanel({
   bookId,
   pageNumber,
   chapterId,
   chapterTitle,
-  refreshKey = 0
+  refreshKey = 0,
+  compact = false,
+  onCollapse
 }: {
   bookId: string;
   pageNumber: number | null;
   chapterId: string | null;
   chapterTitle: string | null;
   refreshKey?: number;
+  compact?: boolean;
+  onCollapse?: () => void;
 }) {
   const [notes, setNotes] = useState<SmartBookNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,8 +133,8 @@ export function SmartNotesPanel({
   const [preview, setPreview] = useState<SmartBookNote | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const strokes = useRef<Point[][]>([]);
   const drawing = useRef(false);
-  const last = useRef<{ x: number; y: number } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -55,14 +149,15 @@ export function SmartNotesPanel({
     load();
   }, [load, refreshKey]);
 
-  // Prime the canvas with a white background so thumbnails are not transparent.
+  // Prime the canvas with a white background and clear the stroke buffer.
   const resetCanvas = useCallback(() => {
+    strokes.current = [];
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const ctx = canvas?.getContext("2d");
+    if (canvas && ctx) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     setCanvasDirty(false);
   }, []);
 
@@ -70,39 +165,41 @@ export function SmartNotesPanel({
     resetCanvas();
   }, [resetCanvas]);
 
-  function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>) {
+  function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     return {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height
+      x: Math.round(((e.clientX - rect.left) / rect.width) * canvas.width),
+      y: Math.round(((e.clientY - rect.top) / rect.height) * canvas.height)
     };
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
     drawing.current = true;
-    last.current = pointFromEvent(e);
+    strokes.current.push([pointFromEvent(e)]);
   }
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawing.current) return;
     const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx || !last.current) return;
+    const stroke = strokes.current[strokes.current.length - 1];
+    if (!ctx || !stroke) return;
+    const prev = stroke[stroke.length - 1];
     const p = pointFromEvent(e);
+    if (prev && prev.x === p.x && prev.y === p.y) return;
+    stroke.push(p);
     ctx.strokeStyle = "#1f2937";
     ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(last.current.x, last.current.y);
+    ctx.moveTo(prev.x, prev.y);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
-    last.current = p;
     if (!canvasDirty) setCanvasDirty(true);
   }
   function onPointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
     drawing.current = false;
-    last.current = null;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
@@ -123,10 +220,7 @@ export function SmartNotesPanel({
   }
 
   function noteContext() {
-    return {
-      chapterId,
-      pageNumber: pageNumber ?? null
-    };
+    return { chapterId, pageNumber: pageNumber ?? null };
   }
 
   function onCreateTextNote() {
@@ -145,14 +239,14 @@ export function SmartNotesPanel({
   }
 
   function onSaveCanvasNote() {
-    const canvas = canvasRef.current;
-    if (!canvas || !canvasDirty) return;
-    const canvasData = canvas.toDataURL("image/png");
+    if (!canvasDirty) return;
+    // Persist compact stroke JSON instead of a full PNG base64 image.
+    const doc: StrokeDoc = { v: 1, w: CANVAS_W, h: CANVAS_H, strokes: strokes.current };
     void run(async () => {
       await studentClient.createNote(bookId, {
         type: "canvas",
         title: "手寫筆記",
-        canvasData,
+        canvasData: JSON.stringify(doc),
         ...noteContext()
       });
       resetCanvas();
@@ -177,7 +271,16 @@ export function SmartNotesPanel({
   }
 
   return (
-    <div className="notes-panel">
+    <div className={`notes-panel ${compact ? "compact" : ""}`.trim()}>
+      {onCollapse ? (
+        <div className="notes-panel-head">
+          <h4>智能筆記</h4>
+          <button type="button" className="notes-btn small" onClick={onCollapse}>
+            收合筆記
+          </button>
+        </div>
+      ) : null}
+
       <div className="notes-compose">
         <div className="notes-context muted">
           目前內容：
@@ -260,11 +363,10 @@ export function SmartNotesPanel({
                     刪除
                   </button>
                 </div>
-                {note.type === "canvas" && note.canvasData ? (
-                  <img
-                    className="notes-canvas-thumb"
-                    src={note.canvasData}
-                    alt="手寫筆記"
+                {note.type === "canvas" ? (
+                  <CanvasNotePreview
+                    data={note.canvasData}
+                    width={compact ? 220 : 280}
                     onClick={() => setPreview(note)}
                   />
                 ) : (
@@ -276,14 +378,11 @@ export function SmartNotesPanel({
         )}
       </div>
 
-      {preview?.canvasData ? (
+      {preview ? (
         <div className="notes-preview-backdrop" onClick={() => setPreview(null)} role="presentation">
-          <img
-            className="notes-preview-img"
-            src={preview.canvasData}
-            alt="手寫筆記預覽"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="notes-preview-box" onClick={(e) => e.stopPropagation()}>
+            <CanvasNotePreview data={preview.canvasData} width={560} />
+          </div>
         </div>
       ) : null}
     </div>

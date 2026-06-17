@@ -36,8 +36,10 @@ export function PdfReaderToolbar({
   onToggleFullWidth,
   tocCollapsed,
   onToggleToc,
-  aiCollapsed,
+  aiOpen,
   onToggleAi,
+  notesOpen,
+  onToggleNotes,
   zoom,
   onZoom,
   ratio,
@@ -47,7 +49,6 @@ export function PdfReaderToolbar({
   onJumpPage,
   onPrevPage,
   onNextPage,
-  onOpenNote,
   onAskAi
 }: {
   outlineNodes: ReaderOutlineNode[];
@@ -57,8 +58,10 @@ export function PdfReaderToolbar({
   onToggleFullWidth: () => void;
   tocCollapsed: boolean;
   onToggleToc: () => void;
-  aiCollapsed: boolean;
+  aiOpen: boolean;
   onToggleAi: () => void;
+  notesOpen: boolean;
+  onToggleNotes: () => void;
   zoom: number;
   onZoom: (zoom: number) => void;
   ratio: ReaderRatio | null;
@@ -68,7 +71,6 @@ export function PdfReaderToolbar({
   onJumpPage: (page: number) => void;
   onPrevPage: () => void;
   onNextPage: () => void;
-  onOpenNote: () => void;
   onAskAi: () => void;
 }) {
   const hasPdf = page != null;
@@ -177,8 +179,13 @@ export function PdfReaderToolbar({
         </select>
       </label>
 
-      <button type="button" className="tool-btn" onClick={onOpenNote} title="貼圖筆記">
-        📌 貼圖筆記
+      <button
+        type="button"
+        className={`tool-btn ${notesOpen ? "active" : ""}`}
+        onClick={onToggleNotes}
+        title="智能筆記"
+      >
+        📝 {notesOpen ? "收合筆記" : "智能筆記"}
       </button>
 
       <span className="tool-spacer" />
@@ -197,7 +204,7 @@ export function PdfReaderToolbar({
       </div>
 
       <button type="button" className="tool-btn" onClick={onToggleAi}>
-        {aiCollapsed ? "展開AI" : "收合AI"}
+        {aiOpen ? "收合AI" : "展開AI"}
       </button>
 
       <button type="button" className="tool-btn ask" onClick={onAskAi}>

@@ -15,7 +15,6 @@ import {
 import { ProtectedPdfViewer } from "../components/ProtectedPdfViewer";
 import { ChatPanel } from "../components/ChatPanel";
 import { SmartNotesPanel } from "../components/SmartNotesPanel";
-import { StickyNoteModal } from "../components/StickyNoteModal";
 import { TabPlaceholder } from "../components/TabPlaceholder";
 
 const QUICK_PROMPTS = [
@@ -211,7 +210,9 @@ export function BookReaderPage() {
   const [selectedOutlineId, setSelectedOutlineId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ReaderTabKey>("smart-book");
   const [collapsed, setCollapsed] = useState(false);
-  const [aiCollapsed, setAiCollapsed] = useState(false);
+  // The right column shows the AI Q&A panel, the Smart Notes panel, or nothing.
+  // These are mutually exclusive so the PDF grows when both are collapsed.
+  const [rightPanel, setRightPanel] = useState<"ai" | "notes" | null>("ai");
   const [tocWidth, setTocWidth] = useState(() =>
     readStoredWidth(TOC_WIDTH_KEY, TOC_DEFAULT, TOC_MIN, TOC_MAX)
   );
@@ -225,7 +226,6 @@ export function BookReaderPage() {
   // PDF physical page is the canonical navigation source of truth.
   const [pdfPage, setPdfPage] = useState(1);
   const [pageCount, setPageCount] = useState<number | null>(null);
-  const [noteOpen, setNoteOpen] = useState(false);
   const [notesRefreshKey, setNotesRefreshKey] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -274,7 +274,6 @@ export function BookReaderPage() {
     setActiveTab("smart-book");
     setPdfPage(1);
     setPageCount(null);
-    setNoteOpen(false);
     setPdfError("");
   }, [bookId]);
 
@@ -466,13 +465,14 @@ export function BookReaderPage() {
     const applied = rightGutter - next;
     if (applied === 0) return;
     setRightGutter(next);
-    if (!aiCollapsed) {
+    if (rightPanel !== null) {
       setAiWidth((width) => clamp(width + applied, AI_MIN, AI_MAX));
     }
   }
 
+  // Open the AI Q&A panel (collapsing Smart Notes) and scroll it into view.
   function scrollToChat() {
-    setAiCollapsed(false);
+    setRightPanel("ai");
     requestAnimationFrame(() =>
       chatRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
     );
@@ -507,8 +507,10 @@ export function BookReaderPage() {
               onToggleFullWidth={toggleFullWidth}
               tocCollapsed={collapsed}
               onToggleToc={() => setCollapsed((v) => !v)}
-              aiCollapsed={aiCollapsed}
-              onToggleAi={() => setAiCollapsed((v) => !v)}
+              aiOpen={rightPanel === "ai"}
+              onToggleAi={() => setRightPanel((p) => (p === "ai" ? null : "ai"))}
+              notesOpen={rightPanel === "notes"}
+              onToggleNotes={() => setRightPanel((p) => (p === "notes" ? null : "notes"))}
               zoom={zoom}
               onZoom={setZoom}
               ratio={layoutRatio}
@@ -518,7 +520,6 @@ export function BookReaderPage() {
               onJumpPage={jumpToPage}
               onPrevPage={prevPage}
               onNextPage={nextPage}
-              onOpenNote={() => setNoteOpen(true)}
               onAskAi={scrollToChat}
             />
 
@@ -565,10 +566,10 @@ export function BookReaderPage() {
                 )}
               </section>
 
-              {!aiCollapsed && (
-                <PaneSplitter onResize={resizeAi} label="調整 PDF 與 AI 寬度" />
+              {rightPanel !== null && (
+                <PaneSplitter onResize={resizeAi} label="調整 PDF 與右側面板寬度" />
               )}
-              {!aiCollapsed && (
+              {rightPanel === "ai" && (
                 <div className="reader-chat-col" ref={chatRef} style={{ width: aiWidth }}>
                   <ChatPanel
                     bookId={bookId}
@@ -578,6 +579,19 @@ export function BookReaderPage() {
                     quickPrompts={QUICK_PROMPTS}
                     inputPlaceholder="問 AI 問題（支援貼上圖片）..."
                     onSaveAnswer={saveAiAnswerAsNote}
+                  />
+                </div>
+              )}
+              {rightPanel === "notes" && (
+                <div className="reader-notes-col" style={{ width: aiWidth }}>
+                  <SmartNotesPanel
+                    bookId={bookId}
+                    pageNumber={book.pdfFileId ? pdfPage : null}
+                    chapterId={safeActiveChapter}
+                    chapterTitle={activeChapterTitle}
+                    refreshKey={notesRefreshKey}
+                    compact
+                    onCollapse={() => setRightPanel(null)}
                   />
                 </div>
               )}
@@ -595,14 +609,6 @@ export function BookReaderPage() {
           <TabPlaceholder label={READER_TABS.find((t) => t.key === activeTab)?.label ?? ""} />
         )}
 
-        {noteOpen && (
-          <StickyNoteModal
-            bookTitle={book.title}
-            page={pdfPage}
-            chapterTitle={activeChapterTitle}
-            onClose={() => setNoteOpen(false)}
-          />
-        )}
       </div>
       <OuterResizeHandle
         onResize={resizeRightOuter}
