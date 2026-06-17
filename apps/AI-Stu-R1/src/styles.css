@@ -931,14 +931,10 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-outer-gutter {
     display: none;
   }
-  /* The PDF column owns the remaining height and scrolls internally so the
-     PDF is visible immediately at the top instead of below a body scroll. */
+  /* The in-flow reader column collapses — the PDF viewport is pinned below. */
   .reader-main {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: auto;
-    overflow: hidden;
     flex-direction: column;
+    min-height: 0;
   }
   .reader-main > * {
     min-height: 0;
@@ -958,35 +954,50 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-toc {
     min-height: 0;
   }
-  /* PDF column fills the reader area; the scroll container owns the scrolling. */
   .reader-pdf-col {
-    flex: 1 1 auto;
     min-height: 0;
+    border: none;
+    box-shadow: none;
   }
-  .pdf-canvas-frame {
-    flex: 1 1 auto;
+
+  /* Option B-lite: pin the PDF viewport (the .pdf-canvas-frame that wraps the
+     scroll container + watermark) to a fixed region between the reader chrome
+     and the bottom action bar. The page shows immediately and scrolls inside
+     its own container — the page body is never the PDF scroll container. The
+     top/bottom come from JS-measured custom properties (toolbar can wrap). */
+  .reader-layout-mobile .pdf-canvas-frame {
+    position: fixed;
+    top: var(--mobile-reader-top, 160px);
+    bottom: var(--mobile-reader-bottom, 64px);
+    left: 0;
+    right: 0;
     min-height: 0;
+    /* Below the sticky header (z-index:20), the action bar (75) and sheets (80). */
+    z-index: 10;
+    background: #eef4fb;
   }
-  .pdf-canvas-scroll {
+  .reader-layout-mobile .pdf-canvas-scroll {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    /* Horizontal center, vertical top-align — PDF starts at the top. */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    /* Horizontal centre, vertical top-align — the page starts at the top. */
     justify-content: center;
     align-items: flex-start;
-    padding: 10px 0 16px;
+    padding: 10px 8px calc(8px + env(safe-area-inset-bottom));
   }
-  /* Fit the PDF page to the mobile viewport. PDF.js sets an inline CSS width on
-     the canvas (e.g. 595px) that overflows a ~383px phone screen; override it so
-     the page scales to the container with a proportional (auto) height. */
-  .pdf-page-stack {
+  /* Fit the page to the mobile viewport (PDF.js sets an inline 595px width). */
+  .reader-layout-mobile canvas.pdf-canvas {
+    display: block;
     width: 100% !important;
     max-width: 100%;
-  }
-  .pdf-canvas {
-    width: 100% !important;
     height: auto !important;
+    margin: 0 auto;
+  }
+  .reader-layout-mobile .pdf-page-stack {
+    width: 100% !important;
     max-width: 100%;
   }
   .reader-paper-scroll {
@@ -1210,19 +1221,14 @@ body.reader-mobile-overlay-open {
   background: var(--primary);
   border-color: var(--primary);
 }
-/* On mobile the reader fills the dynamic viewport so the PDF scroll area — not
-   the page body — owns scrolling, and the PDF starts at the top of that area
-   (no drag-up needed). dvh handles the mobile browser URL bar; vh is fallback. */
+/* On mobile the reader chrome (top bar / tabs / toolbar) flows normally at the
+   top; the PDF viewport is pinned (position:fixed) below it, so the workbench
+   is a normal block and the body scroll is locked (see .reader-reading-mobile)
+   to keep the body from becoming the PDF scroll container. */
 .reader-layout-mobile .reader-workbench {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  display: block;
   min-height: 0;
-  overflow: hidden;
-  padding-bottom: calc(74px + env(safe-area-inset-bottom));
 }
-/* Reader chrome keeps its natural height; only the PDF area (.reader-main) flexes. */
-.reader-layout-mobile .reader-workbench > :not(.reader-main) {
-  flex: 0 0 auto;
+body.reader-reading-mobile {
+  overflow: hidden;
 }

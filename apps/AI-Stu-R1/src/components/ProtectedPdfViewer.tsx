@@ -44,8 +44,22 @@ export function ProtectedPdfViewer({
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
   const textLayerTaskRef = useRef<{ cancel: () => void } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(-1);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [message, setMessage] = useState("");
+  const [textLayerError, setTextLayerError] = useState(false);
+
+  // Measure container width to avoid calculating/rendering before layout is ready.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      setContainerWidth(entries[0].contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Load (and reload) the document whenever the protected blob changes.
   useEffect(() => {
@@ -54,10 +68,8 @@ export function ProtectedPdfViewer({
     setMessage("");
     (async () => {
       try {
-        console.log("[PdfViewer] Fetching doc, blob size:", blob.size);
         const data = new Uint8Array(await blob.arrayBuffer());
         const doc = await pdfjsLib.getDocument({ data }).promise;
-        console.log("[PdfViewer] Doc loaded, pages:", doc.numPages);
         if (cancelled) {
           void doc.destroy();
           return;
@@ -88,12 +100,13 @@ export function ProtectedPdfViewer({
   }, [blob]);
 
   // Render the current page at the current zoom. Re-runs on page/zoom change.
+  // Render the current page onto the canvas when ready.
   useEffect(() => {
-    if (status !== "ready") return;
     const doc = docRef.current;
     const canvas = canvasRef.current;
-    if (!doc || !canvas) return;
+    if (!doc || !canvas || status !== "ready" || containerWidth === 0) return;
 
+    setTextLayerError(false);
     let cancelled = false;
     (async () => {
       try {
@@ -106,7 +119,10 @@ export function ProtectedPdfViewer({
         if (cancelled) return;
 
         const viewport = pdfPage.getViewport({ scale: zoom / 100 });
-        let outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        // Clamp DPR to 1.5 max on Android to prevent Canvas memory crashes.
+        const maxDpr = isAndroid ? 1.5 : 2;
+        let outputScale = Math.min(window.devicePixelRatio || 1, maxDpr);
         const area = viewport.width * viewport.height * outputScale * outputScale;
         if (area > MAX_CANVAS_PIXELS) {
           outputScale = Math.max(1, Math.sqrt(MAX_CANVAS_PIXELS / (viewport.width * viewport.height)));
@@ -121,7 +137,6 @@ export function ProtectedPdfViewer({
         canvas.height = Math.floor(viewport.height * outputScale);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
-        console.log(`[PdfViewer] Canvas sizes: CSS ${canvas.style.width}x${canvas.style.height}, attr ${canvas.width}x${canvas.height}, DPR ${outputScale}`);
 
         const task = pdfPage.render({
           canvas,
@@ -131,7 +146,6 @@ export function ProtectedPdfViewer({
         });
         renderTaskRef.current = task;
         await task.promise;
-        console.log("[PdfViewer] Page render task completed");
         renderTaskRef.current = null;
 
         // Selectable text layer overlaid on the canvas (for copy / notes / AI).
@@ -156,6 +170,7 @@ export function ProtectedPdfViewer({
             await textLayer.render();
             onPageHasText?.(textContent.items.length > 0);
           } catch {
+            if (!cancelled) setTextLayerError(true);
             onPageHasText?.(false);
           }
         }
@@ -183,7 +198,7 @@ export function ProtectedPdfViewer({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, page, zoom]);
+  }, [status, page, zoom, containerWidth]);
 
   // Report the current selection text when selection mode is active.
   function reportSelection() {
@@ -192,13 +207,18 @@ export function ProtectedPdfViewer({
   }
 
   return (
-    <div className="pdf-canvas-frame">
+    <div className="pdf-canvas-frame" ref={containerRef}>
       <div className="pdf-canvas-scroll">
         {status === "loading" && (
           <p className="muted pdf-canvas-status">Rendering protected PDF…</p>
         )}
         {status === "error" && (
           <p className="error-text pdf-canvas-status">{message}</p>
+        )}
+        {textLayerError && (
+          <p className="error-text pdf-canvas-status" style={{ position: 'absolute', zIndex: 10, top: 16 }}>
+            此裝置目前無法啟用文字選取，但仍可閱讀 PDF。
+          </p>
         )}
         <div className={`pdf-page-stack ${status === "ready" ? "" : "is-hidden"}`}>
           <canvas ref={canvasRef} className="pdf-canvas" />

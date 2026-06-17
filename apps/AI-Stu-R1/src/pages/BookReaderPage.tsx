@@ -246,6 +246,9 @@ export function BookReaderPage() {
   );
   const [mobilePanel, setMobilePanel] = useState<MobileReaderPanel | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+  const outerLayoutRef = useRef<HTMLDivElement>(null);
+  const readerMainRef = useRef<HTMLDivElement>(null);
+  const actionBarRef = useRef<HTMLDivElement>(null);
   const isMobile = viewportWidth <= 768;
   const isTablet = viewportWidth >= 769 && viewportWidth <= 1024;
 
@@ -290,6 +293,54 @@ export function BookReaderPage() {
       document.body.classList.remove("reader-mobile-overlay-open");
     };
   }, [isMobile, mobilePanel]);
+
+  // Lock the page body scroll while reading on mobile so the body never becomes
+  // the PDF scroll container (the pinned .pdf-canvas-frame owns scrolling).
+  const isMobileReading = isMobile && activeTab === "smart-book";
+  useEffect(() => {
+    if (!isMobileReading) return;
+    document.body.classList.add("reader-reading-mobile");
+    return () => document.body.classList.remove("reader-reading-mobile");
+  }, [isMobileReading]);
+
+  // Measure the reader chrome height (top of .reader-main) and the bottom action
+  // bar so the fixed mobile PDF viewport sits exactly between them. Re-measures
+  // on resize / orientation / chrome layout changes (e.g. toolbar wrapping).
+  useEffect(() => {
+    const root = outerLayoutRef.current;
+    if (!root) return;
+    if (!isMobile) {
+      root.style.removeProperty("--mobile-reader-top");
+      root.style.removeProperty("--mobile-reader-bottom");
+      return;
+    }
+    const measure = () => {
+      const top = readerMainRef.current?.getBoundingClientRect().top;
+      if (top != null && Number.isFinite(top)) {
+        root.style.setProperty("--mobile-reader-top", `${Math.max(0, Math.round(top))}px`);
+      }
+      const barH = actionBarRef.current?.getBoundingClientRect().height;
+      if (barH != null && Number.isFinite(barH) && barH > 0) {
+        root.style.setProperty("--mobile-reader-bottom", `${Math.round(barH)}px`);
+      }
+    };
+    measure();
+    const raf = requestAnimationFrame(measure);
+    const settle = window.setTimeout(measure, 200);
+    const workbench = readerMainRef.current?.parentElement;
+    const ro = new ResizeObserver(measure);
+    if (workbench) ro.observe(workbench);
+    if (actionBarRef.current) ro.observe(actionBarRef.current);
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(settle);
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+    };
+  }, [isMobile, activeTab, mobilePanel, rightPanel, selectionMode, pdfPage, pdfBlob]);
 
   useEffect(() => {
     try {
@@ -631,6 +682,7 @@ export function BookReaderPage() {
 
   return (
     <div
+      ref={outerLayoutRef}
       className={`reader-outer-layout ${isMobile ? "reader-layout-mobile" : isTablet ? "reader-layout-tablet" : ""}`.trim()}
       style={
         {
@@ -735,7 +787,7 @@ export function BookReaderPage() {
               </div>
             )}
 
-            <div className="reader-main">
+            <div className="reader-main" ref={readerMainRef}>
               {!isMobile && !collapsed && (
                 <ChapterSidebar
                   outline={outline}
@@ -915,7 +967,7 @@ export function BookReaderPage() {
       />
       <div className="reader-outer-gutter right" aria-hidden="true" />
       {isMobile ? (
-        <div className="reader-mobile-action-bar">
+        <div className="reader-mobile-action-bar" ref={actionBarRef}>
           <Link to="/books" className="reader-mobile-action-btn">
             返回
           </Link>
