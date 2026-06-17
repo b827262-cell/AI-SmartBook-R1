@@ -43,6 +43,8 @@ import {
   generatePdfJsonIndexInputSchema,
   saveJsonIndexInputSchema,
   pdfJsonIndexSchema,
+  createSmartBookNoteInputSchema,
+  updateSmartBookNoteInputSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
   type BookFile,
@@ -1889,6 +1891,47 @@ app.get("/api/student/books/:bookId/contents", (req, res) => {
   const book = findPublishedBook(String(req.params.bookId));
   if (!book) return fail(res, 404, "book not found");
   res.json({ contents: repos.contents.findByBookId(book.id) });
+});
+
+// ---- Smart Notes (text / ai_answer / canvas) -----------------------------
+// Notes are scoped to a published book and optionally to chapter/page context.
+app.get("/api/student/books/:bookId/notes", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  res.json({ notes: repos.notes.findByBookId(book.id) });
+});
+
+app.post("/api/student/books/:bookId/notes", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const parsed = createSmartBookNoteInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  if (parsed.data.type === "canvas" && !parsed.data.canvasData) {
+    return fail(res, 400, "canvas notes require canvasData");
+  }
+  if (parsed.data.type !== "canvas" && !parsed.data.content?.trim()) {
+    return fail(res, 400, "text/ai_answer notes require content");
+  }
+  res.status(201).json({ note: repos.notes.create(book.id, parsed.data) });
+});
+
+app.patch("/api/student/books/:bookId/notes/:noteId", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const note = repos.notes.findById(String(req.params.noteId));
+  if (!note || note.bookId !== book.id) return fail(res, 404, "note not found");
+  const parsed = updateSmartBookNoteInputSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  res.json({ note: repos.notes.update(note.id, parsed.data) });
+});
+
+app.delete("/api/student/books/:bookId/notes/:noteId", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const note = repos.notes.findById(String(req.params.noteId));
+  if (!note || note.bookId !== book.id) return fail(res, 404, "note not found");
+  repos.notes.delete(note.id);
+  res.json({ deleted: true });
 });
 
 app.post("/api/student/books/:bookId/session", (req, res) => {

@@ -14,6 +14,7 @@ import {
 } from "../components/PdfReaderToolbar";
 import { ProtectedPdfViewer } from "../components/ProtectedPdfViewer";
 import { ChatPanel } from "../components/ChatPanel";
+import { SmartNotesPanel } from "../components/SmartNotesPanel";
 import { StickyNoteModal } from "../components/StickyNoteModal";
 import { TabPlaceholder } from "../components/TabPlaceholder";
 
@@ -225,6 +226,7 @@ export function BookReaderPage() {
   const [pdfPage, setPdfPage] = useState(1);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [notesRefreshKey, setNotesRefreshKey] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -392,6 +394,24 @@ export function BookReaderPage() {
     watermarkStamp || new Date().toLocaleDateString()
   ].join(" · ");
 
+  async function saveAiAnswerAsNote(content: string) {
+    if (!book) return;
+    const firstLine = content.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "AI 解答";
+    try {
+      await studentClient.createNote(bookId, {
+        type: "ai_answer",
+        title: firstLine.slice(0, 40),
+        content,
+        chapterId: safeActiveChapter,
+        pageNumber: book.pdfFileId ? pdfPage : null
+      });
+      setNotesRefreshKey((k) => k + 1);
+      window.alert("已存成筆記，可於「智能筆記」分頁查看。");
+    } catch (e) {
+      window.alert(`存成筆記失敗：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   function jumpToPage(page: number) {
     const clamped = clamp(page, 1, pageCount ?? Number.MAX_SAFE_INTEGER);
     setPdfPage(clamped);
@@ -557,11 +577,20 @@ export function BookReaderPage() {
                     subtitle="點擊左側章節可限定提問範圍"
                     quickPrompts={QUICK_PROMPTS}
                     inputPlaceholder="問 AI 問題（支援貼上圖片）..."
+                    onSaveAnswer={saveAiAnswerAsNote}
                   />
                 </div>
               )}
             </div>
           </>
+        ) : activeTab === "smart-note" ? (
+          <SmartNotesPanel
+            bookId={bookId}
+            pageNumber={book.pdfFileId ? pdfPage : null}
+            chapterId={safeActiveChapter}
+            chapterTitle={activeChapterTitle}
+            refreshKey={notesRefreshKey}
+          />
         ) : (
           <TabPlaceholder label={READER_TABS.find((t) => t.key === activeTab)?.label ?? ""} />
         )}

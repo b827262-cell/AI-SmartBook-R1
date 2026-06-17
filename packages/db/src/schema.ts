@@ -130,6 +130,21 @@ export const bookQaLogs = sqliteTable("book_qa_logs", {
   createdAt: text("created_at").notNull()
 });
 
+export const smartBookNotes = sqliteTable("smart_book_notes", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull(),
+  chapterId: text("chapter_id"),
+  pageNumber: integer("page_number"),
+  type: text("type").notNull().default("text"),
+  title: text("title").notNull().default(""),
+  content: text("content"),
+  canvasData: text("canvas_data"),
+  canvasImageUrl: text("canvas_image_url"),
+  sourceMessageId: text("source_message_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
 export type DbSchema = {
   books: typeof books;
   bookFiles: typeof bookFiles;
@@ -141,6 +156,7 @@ export type DbSchema = {
   bookAiJobs: typeof bookAiJobs;
   bookQaLogs: typeof bookQaLogs;
   appSettings: typeof appSettings;
+  smartBookNotes: typeof smartBookNotes;
 };
 
 export const schema = {
@@ -153,5 +169,6 @@ export const schema = {
   pdfAccessLogs,
   bookAiJobs,
   bookQaLogs,
-  appSettings
+  appSettings,
+  smartBookNotes
 };

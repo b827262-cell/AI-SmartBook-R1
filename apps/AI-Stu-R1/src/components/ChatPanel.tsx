@@ -23,7 +23,8 @@ export function ChatPanel({
   title,
   subtitle,
   quickPrompts = [],
-  inputPlaceholder
+  inputPlaceholder,
+  onSaveAnswer
 }: {
   bookId: string;
   chapterId?: string;
@@ -31,6 +32,7 @@ export function ChatPanel({
   subtitle?: string;
   quickPrompts?: string[];
   inputPlaceholder?: string;
+  onSaveAnswer?: (content: string) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessageItem[]>([GREETING]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -94,7 +96,18 @@ export function ChatPanel({
       )}
       <div className="chat-scroll" ref={scrollRef}>
         {messages.map((m, i) => (
-          <MessageBubble key={i} message={m} />
+          <div key={i} className="chat-msg-wrap">
+            <MessageBubble message={m} />
+            {onSaveAnswer && m.role === "assistant" && i > 0 ? (
+              <button
+                type="button"
+                className="chat-save-note"
+                onClick={() => onSaveAnswer(m.content)}
+              >
+                💾 存成筆記
+              </button>
+            ) : null}
+          </div>
         ))}
         {busy && <div className="bubble assistant muted">思考中…</div>}
         {error && <div className="bubble assistant" style={{ color: "#b91c1c" }}>發生錯誤：{error}</div>}

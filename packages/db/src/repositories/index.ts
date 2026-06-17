@@ -8,6 +8,7 @@ import { makeAiJobRepo } from "./aiJob.repo";
 import { makeQaLogRepo } from "./qaLog.repo";
 import { makePdfAccessLogRepo } from "./pdfAccessLog.repo";
 import { makeSettingsRepo } from "./settings.repo";
+import { makeSmartBookNoteRepo } from "./smartBookNote.repo";
 
 export * from "./book.repo";
 export * from "./bookFile.repo";
@@ -18,6 +19,7 @@ export * from "./aiJob.repo";
 export * from "./qaLog.repo";
 export * from "./pdfAccessLog.repo";
 export * from "./settings.repo";
+export * from "./smartBookNote.repo";
 
 export interface Repositories {
   books: ReturnType<typeof makeBookRepo>;
@@ -29,6 +31,7 @@ export interface Repositories {
   qaLogs: ReturnType<typeof makeQaLogRepo>;
   pdfAccessLogs: ReturnType<typeof makePdfAccessLogRepo>;
   settings: ReturnType<typeof makeSettingsRepo>;
+  notes: ReturnType<typeof makeSmartBookNoteRepo>;
 }
 
 /** Build all repositories bound to a single Db handle. */
@@ -42,6 +45,7 @@ export function createRepositories(db: Db): Repositories {
     aiJobs: makeAiJobRepo(db),
     qaLogs: makeQaLogRepo(db),
     pdfAccessLogs: makePdfAccessLogRepo(db),
-    settings: makeSettingsRepo(db)
+    settings: makeSettingsRepo(db),
+    notes: makeSmartBookNoteRepo(db)
   };
 }

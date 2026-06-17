@@ -4,7 +4,10 @@ import type {
   BookChapter,
   BookContent,
   ChatMessage,
-  ReaderOutlineResponse
+  CreateSmartBookNoteInput,
+  ReaderOutlineResponse,
+  SmartBookNote,
+  UpdateSmartBookNoteInput
 } from "@ai-smartbook/schema";
 
 export interface BookDetail extends Book {
@@ -87,5 +90,26 @@ export const studentClient = {
     ),
 
   getAppearanceSettings: () =>
-    http<{ settings: AppearanceSettings }>("/api/appearance-settings")
+    http<{ settings: AppearanceSettings }>("/api/appearance-settings"),
+
+  // ---- Smart Notes -------------------------------------------------------
+  listNotes: (bookId: string) =>
+    http<{ notes: SmartBookNote[] }>(`/api/student/books/${bookId}/notes`),
+
+  createNote: (bookId: string, input: CreateSmartBookNoteInput) =>
+    http<{ note: SmartBookNote }>(`/api/student/books/${bookId}/notes`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    }),
+
+  updateNote: (bookId: string, noteId: string, input: UpdateSmartBookNoteInput) =>
+    http<{ note: SmartBookNote }>(`/api/student/books/${bookId}/notes/${noteId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    }),
+
+  deleteNote: (bookId: string, noteId: string) =>
+    http<{ deleted: boolean }>(`/api/student/books/${bookId}/notes/${noteId}`, {
+      method: "DELETE"
+    })
 };

@@ -119,6 +119,20 @@ const STATEMENTS = [
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS smart_book_notes (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    chapter_id TEXT,
+    page_number INTEGER,
+    type TEXT NOT NULL DEFAULT 'text',
+    title TEXT NOT NULL DEFAULT '',
+    content TEXT,
+    canvas_data TEXT,
+    canvas_image_url TEXT,
+    source_message_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_book_files_book ON book_files(book_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_contents_book ON book_contents(book_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_contents_chapter ON book_contents(chapter_id)`,
@@ -127,7 +141,8 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_pdf_access_logs_book ON pdf_access_logs(book_id)`,
   `CREATE INDEX IF NOT EXISTS idx_pdf_access_logs_session ON pdf_access_logs(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_ai_jobs_book ON book_ai_jobs(book_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_book_qa_logs_book ON book_qa_logs(book_id)`
+  `CREATE INDEX IF NOT EXISTS idx_book_qa_logs_book ON book_qa_logs(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_smart_book_notes_book ON smart_book_notes(book_id)`
 ];
 
 /**
