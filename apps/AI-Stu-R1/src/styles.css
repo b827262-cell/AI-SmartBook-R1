@@ -770,14 +770,27 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   margin: 0 auto;
   background: #fff;
 }
+/* has-snapshot is only ever set on Android (where the snapshot is generated),
+   so these rules never touch desktop. The snapshot <img> is the visible PDF
+   layer with its own paint layer (z-index); the live canvas and the inert text
+   layer sit behind it and are hidden. */
 .pdf-page-stack.has-snapshot {
   position: relative;
+  width: 100%;
+}
+.pdf-page-stack.has-snapshot .pdf-canvas-snapshot {
+  position: relative;
+  z-index: 50;
 }
 .pdf-page-stack.has-snapshot canvas.pdf-canvas {
   opacity: 0;
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 1;
+}
+.pdf-page-stack.has-snapshot .pdf-text-layer {
+  display: none;
 }
 
 /* PDF.js selectable text layer overlaid on the canvas. Invisible glyph spans
@@ -1020,6 +1033,34 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-layout-mobile .pdf-page-stack {
     width: 100% !important;
     max-width: 100%;
+  }
+  /* Force the Android snapshot <img> to be the visible top PDF layer inside the
+     pinned mobile viewport; hide the live canvas and the text layer behind it. */
+  .reader-layout-mobile .pdf-page-stack.has-snapshot {
+    position: relative;
+    width: 100%;
+  }
+  .reader-layout-mobile .pdf-page-stack.has-snapshot .pdf-canvas-snapshot {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative;
+    z-index: 50;
+    width: 100% !important;
+    max-width: 100%;
+    height: auto !important;
+    margin: 0 auto;
+    background: #fff;
+  }
+  .reader-layout-mobile .pdf-page-stack.has-snapshot canvas.pdf-canvas {
+    opacity: 0 !important;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .reader-layout-mobile .pdf-page-stack.has-snapshot .pdf-text-layer {
+    display: none !important;
   }
   .reader-paper-scroll {
     max-height: 60vh;
