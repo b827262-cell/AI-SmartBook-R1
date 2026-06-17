@@ -418,6 +418,11 @@ export function BookReaderPage() {
   }
 
   // ---- PDF text selection actions ----------------------------------------
+  // TODO: Future permission flags may include:
+  // - allowTextSelection
+  // - allowCopy
+  // - allowAskAIWithSelection
+  // - allowSaveSelectionToNote
   function selectionSourcePrefix(): string {
     const parts = [book?.title, activeChapterTitle, book?.pdfFileId ? `P${pdfPage}` : null].filter(
       (p): p is string => !!p
