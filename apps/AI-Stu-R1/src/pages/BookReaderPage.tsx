@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import type { BookChapter, ReaderOutlineNode, ReaderOutlineSource } from "@ai-smartbook/schema";
 import { studentClient, type BookDetail } from "../studentClient";
 import type { StudentBook } from "../bookDisplay";
@@ -38,6 +38,7 @@ const OUTER_LAYOUT_KEY = "smartbook.reader.outerLayout";
 const LAYOUT_RATIO_KEY = "smartbook.reader.layoutRatio";
 const OUTER_GUTTER_MIN = 16;
 const OUTER_GUTTER_MAX = 520;
+type MobileReaderPanel = "toc" | "ai" | "notes";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -240,9 +241,42 @@ export function BookReaderPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const [watermarkStamp, setWatermarkStamp] = useState("");
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1024 : window.innerWidth
+  );
+  const [mobilePanel, setMobilePanel] = useState<MobileReaderPanel | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+  const isMobile = viewportWidth <= 768;
+  const isTablet = viewportWidth >= 769 && viewportWidth <= 1024;
 
   // Persist pane widths so the layout survives reloads.
+  useEffect(() => {
+    function onResize() {
+      setViewportWidth(window.innerWidth);
+    }
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobilePanel(null);
+      return;
+    }
+    return;
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile || mobilePanel == null) return;
+    document.body.classList.add("reader-mobile-overlay-open");
+    return () => {
+      document.body.classList.remove("reader-mobile-overlay-open");
+    };
+  }, [isMobile, mobilePanel]);
+
   useEffect(() => {
     try {
       localStorage.setItem(TOC_WIDTH_KEY, String(tocWidth));
@@ -398,6 +432,35 @@ export function BookReaderPage() {
     book.title || book.id,
     watermarkStamp || new Date().toLocaleDateString()
   ].join(" · ");
+  const isMobileChatOpen = isMobile ? mobilePanel === "ai" : false;
+  const isMobileNotesOpen = isMobile ? mobilePanel === "notes" : false;
+  const isMobileTocOpen = isMobile ? mobilePanel === "toc" : false;
+
+  function openMobilePanel(panel: MobileReaderPanel) {
+    if (!isMobile) return;
+    setMobilePanel((current) => (current === panel ? null : panel));
+  }
+  function closeMobilePanel() {
+    if (isMobile) setMobilePanel(null);
+  }
+
+  function setPanelForContext(panel: "ai" | "notes" | null) {
+    if (isMobile) {
+      setMobilePanel(panel);
+      return;
+    }
+    setRightPanel(panel);
+  }
+
+  function revealAiPanelWithPrefill(prefill: { text: string; nonce: number } | null) {
+    setPanelForContext("ai");
+    setAiPrefill(prefill);
+    if (!isMobile) {
+      requestAnimationFrame(() =>
+        chatRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+      );
+    }
+  }
 
   async function saveAiAnswerAsNote(content: string) {
     if (!book) return;
@@ -458,7 +521,7 @@ export function BookReaderPage() {
   async function onSelectionToNote() {
     const text = selectedText.trim();
     if (!text || !book) return;
-    setRightPanel("notes");
+    setPanelForContext("notes");
     const title = `PDF 摘錄 - ${activeChapterTitle ?? (book.pdfFileId ? `第 ${pdfPage} 頁` : "內容")}`;
     const content = `${selectionSourcePrefix()}\n\n${text}`;
     try {
@@ -479,14 +542,10 @@ export function BookReaderPage() {
   function onAskAiAboutSelection() {
     const text = selectedText.trim();
     if (!text) return;
-    setRightPanel("ai");
-    setAiPrefill({
+    revealAiPanelWithPrefill({
       text: `請整理以下 PDF 圈選文字的重點，並用條列方式說明：\n\n${text}`,
       nonce: Date.now()
     });
-    requestAnimationFrame(() =>
-      chatRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    );
   }
 
   function jumpToPage(page: number) {
@@ -498,10 +557,13 @@ export function BookReaderPage() {
     setSelectedOutlineId(nodeId);
     if (!nodeId) {
       setPdfPage(1);
-      return;
+    } else {
+      const node = flatOutline.find((candidate) => candidate.id === nodeId);
+      if (node?.page != null) jumpToPage(node.page);
     }
-    const node = flatOutline.find((candidate) => candidate.id === nodeId);
-    if (node?.page != null) jumpToPage(node.page);
+    if (isMobile) {
+      closeMobilePanel();
+    }
   }
 
   const prevPage = () => setPdfPage((p) => Math.max(1, p - 1));
@@ -550,15 +612,12 @@ export function BookReaderPage() {
 
   // Open the AI Q&A panel (collapsing Smart Notes) and scroll it into view.
   function scrollToChat() {
-    setRightPanel("ai");
-    requestAnimationFrame(() =>
-      chatRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    );
+    revealAiPanelWithPrefill(null);
   }
 
   return (
     <div
-      className="reader-outer-layout"
+      className={`reader-outer-layout ${isMobile ? "reader-layout-mobile" : isTablet ? "reader-layout-tablet" : ""}`.trim()}
       style={
         {
           "--reader-left-gutter": `${leftGutter}px`,
@@ -574,11 +633,11 @@ export function BookReaderPage() {
       <div className="reader-workbench">
         <ReaderTopBar book={book as StudentBook} onToggleHistory={scrollToChat} />
         <ReaderTabs
-          active={rightPanel === "notes" ? "smart-note" : activeTab}
+          active={mobilePanel === "notes" ? "smart-note" : activeTab}
           onChange={(tab) => {
             if (tab === "smart-note") {
               setActiveTab("smart-book");
-              setRightPanel("notes");
+              setPanelForContext("notes");
             } else {
               setActiveTab(tab);
             }
@@ -594,16 +653,34 @@ export function BookReaderPage() {
               fullWidth={fullWidth}
               onToggleFullWidth={toggleFullWidth}
               tocCollapsed={collapsed}
-              onToggleToc={() => setCollapsed((v) => !v)}
+              onToggleToc={() => {
+                if (isMobile) {
+                  openMobilePanel("toc");
+                  return;
+                }
+                setCollapsed((v) => !v);
+              }}
               selectionMode={selectionMode}
               onToggleSelection={() => {
                 setSelectionMode((v) => !v);
                 setSelectedText("");
               }}
-              aiOpen={rightPanel === "ai"}
-              onToggleAi={() => setRightPanel((p) => (p === "ai" ? null : "ai"))}
-              notesOpen={rightPanel === "notes"}
-              onToggleNotes={() => setRightPanel((p) => (p === "notes" ? null : "notes"))}
+              aiOpen={isMobile ? isMobileChatOpen : rightPanel === "ai"}
+              onToggleAi={() => {
+                if (isMobile) {
+                  openMobilePanel("ai");
+                } else {
+                  setRightPanel((p) => (p === "ai" ? null : "ai"));
+                }
+              }}
+              notesOpen={isMobile ? isMobileNotesOpen : rightPanel === "notes"}
+              onToggleNotes={() => {
+                if (isMobile) {
+                  openMobilePanel("notes");
+                } else {
+                  setRightPanel((p) => (p === "notes" ? null : "notes"));
+                }
+              }}
               zoom={zoom}
               onZoom={setZoom}
               ratio={layoutRatio}
@@ -645,7 +722,7 @@ export function BookReaderPage() {
             )}
 
             <div className="reader-main">
-              {!collapsed && (
+              {!isMobile && !collapsed && (
                 <ChapterSidebar
                   outline={outline}
                   activeNodeId={activeOutlineId}
@@ -654,7 +731,7 @@ export function BookReaderPage() {
                   width={tocWidth}
                 />
               )}
-              {!collapsed && (
+              {!isMobile && !collapsed && (
                 <PaneSplitter onResize={resizeToc} label="調整章節與 PDF 寬度" />
               )}
 
@@ -690,10 +767,10 @@ export function BookReaderPage() {
                 )}
               </section>
 
-              {rightPanel !== null && (
+              {!isMobile && rightPanel !== null && (
                 <PaneSplitter onResize={resizeAi} label="調整 PDF 與右側面板寬度" />
               )}
-              {rightPanel === "ai" && (
+              {!isMobile && rightPanel === "ai" && (
                 <div className="reader-chat-col" ref={chatRef} style={{ width: aiWidth }}>
                   <ChatPanel
                     bookId={bookId}
@@ -707,7 +784,7 @@ export function BookReaderPage() {
                   />
                 </div>
               )}
-              {rightPanel === "notes" && (
+              {!isMobile && rightPanel === "notes" && (
                 <div className="reader-notes-col" style={{ width: aiWidth }}>
                   <SmartNotesPanel
                     bookId={bookId}
@@ -721,6 +798,97 @@ export function BookReaderPage() {
                 </div>
               )}
             </div>
+
+            {isMobileTocOpen ? (
+              <div className="reader-mobile-overlay" onClick={closeMobilePanel}>
+                <aside
+                  className="reader-mobile-sheet reader-mobile-toc"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="章節目錄"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="reader-mobile-sheet-head">
+                    <h4>章節目錄</h4>
+                    <button type="button" className="reader-mobile-close" onClick={closeMobilePanel}>
+                      關閉
+                    </button>
+                  </div>
+                  <div className="reader-mobile-sheet-body">
+                    <ChapterSidebar
+                      outline={outline}
+                      activeNodeId={activeOutlineId}
+                      outlineSource={outlineSource}
+                      onSelect={selectOutlineNode}
+                    />
+                  </div>
+                </aside>
+              </div>
+            ) : null}
+
+            {isMobileChatOpen ? (
+              <div className="reader-mobile-overlay" onClick={closeMobilePanel}>
+                <aside
+                  className="reader-mobile-sheet reader-mobile-chat"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="AI 問答"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="reader-mobile-sheet-head">
+                    <h4>AI 問答</h4>
+                    <button type="button" className="reader-mobile-close" onClick={closeMobilePanel}>
+                      關閉
+                    </button>
+                  </div>
+                  <div className="reader-mobile-sheet-body">
+                    <ChatPanel
+                      bookId={bookId}
+                      chapterId={safeActiveChapter ?? undefined}
+                      title="AI 問答"
+                      subtitle="點擊左側章節可限定提問範圍"
+                      quickPrompts={QUICK_PROMPTS}
+                      inputPlaceholder="問 AI 問題（支援貼上圖片）..."
+                      onSaveAnswer={saveAiAnswerAsNote}
+                      prefill={aiPrefill}
+                    />
+                  </div>
+                </aside>
+              </div>
+            ) : null}
+
+            {isMobileNotesOpen ? (
+              <div className="reader-mobile-overlay" onClick={closeMobilePanel}>
+                <aside
+                  className="reader-mobile-sheet reader-mobile-notes"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="智能筆記"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="reader-mobile-sheet-head">
+                    <h4>智能筆記</h4>
+                    <button
+                      type="button"
+                      className="reader-mobile-close"
+                      onClick={closeMobilePanel}
+                    >
+                      關閉
+                    </button>
+                  </div>
+                  <div className="reader-mobile-sheet-body">
+                    <SmartNotesPanel
+                      bookId={bookId}
+                      pageNumber={book.pdfFileId ? pdfPage : null}
+                      chapterId={safeActiveChapter}
+                      chapterTitle={activeChapterTitle}
+                      refreshKey={notesRefreshKey}
+                      compact
+                    />
+                  </div>
+                </aside>
+              </div>
+            ) : null}
           </>
         ) : (
           <TabPlaceholder label={READER_TABS.find((t) => t.key === activeTab)?.label ?? ""} />
@@ -732,6 +900,41 @@ export function BookReaderPage() {
         label="調整右側空白與閱讀器寬度"
       />
       <div className="reader-outer-gutter right" aria-hidden="true" />
+      {isMobile ? (
+        <div className="reader-mobile-action-bar">
+          <Link to="/books" className="reader-mobile-action-btn">
+            返回
+          </Link>
+          <button
+            type="button"
+            className={`reader-mobile-action-btn ${isMobileTocOpen ? "active" : ""}`}
+            onClick={() => openMobilePanel("toc")}
+          >
+            目錄
+          </button>
+          <button
+            type="button"
+            className={`reader-mobile-action-btn ${isMobileChatOpen ? "active" : ""}`}
+            onClick={() => revealAiPanelWithPrefill(null)}
+          >
+            歷史
+          </button>
+          <button
+            type="button"
+            className={`reader-mobile-action-btn ${isMobileChatOpen ? "active" : ""}`}
+            onClick={() => revealAiPanelWithPrefill(null)}
+          >
+            問AI
+          </button>
+          <button
+            type="button"
+            className={`reader-mobile-action-btn ${isMobileNotesOpen ? "active" : ""}`}
+            onClick={() => openMobilePanel("notes")}
+          >
+            筆記
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
