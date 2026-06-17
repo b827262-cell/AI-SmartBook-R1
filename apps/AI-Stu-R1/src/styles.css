@@ -1037,29 +1037,35 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   /* Android Chrome does not paint the snapshot in normal flow (relative stacking
      is insufficient), so pin it as a fixed visible layer between the reader
      chrome and the bottom action bar. z-index 70 stays below the action bar (75)
-     and bottom sheets (80); max-height + object-fit keep it off the action bar. */
+     and bottom sheets (80); max-height + object-fit keep it off the action bar.
+     A separate bounded top is used: the measured --mobile-reader-top can be a
+     broken document-flow value, so cap it at 220px so the page stays on-screen. */
+  .reader-layout-mobile {
+    --mobile-snapshot-top: min(var(--mobile-reader-top, 200px), 220px);
+    --mobile-snapshot-bottom: var(--mobile-reader-bottom, 74px);
+  }
   .reader-layout-mobile .pdf-page-stack.has-snapshot {
     position: relative;
     width: 100%;
   }
   .reader-layout-mobile .pdf-page-stack.has-snapshot .pdf-canvas-snapshot {
     position: fixed !important;
-    top: var(--mobile-reader-top, 200px);
-    left: 0;
-    right: 0;
+    top: var(--mobile-snapshot-top) !important;
+    left: 0 !important;
+    right: 0 !important;
     width: 100% !important;
     max-width: 100%;
     height: auto !important;
     max-height: calc(
-      100dvh - var(--mobile-reader-top, 200px) - var(--mobile-reader-bottom, 74px)
-    );
-    object-fit: contain;
-    z-index: 70;
+      100dvh - var(--mobile-snapshot-top) - var(--mobile-snapshot-bottom)
+    ) !important;
+    object-fit: contain !important;
+    z-index: 70 !important;
     display: block !important;
     visibility: visible !important;
     opacity: 1 !important;
-    margin: 0 auto;
-    background: #fff;
+    margin: 0 auto !important;
+    background: #fff !important;
   }
   .reader-layout-mobile .pdf-page-stack.has-snapshot canvas.pdf-canvas {
     opacity: 0 !important;

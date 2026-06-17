@@ -317,7 +317,11 @@ export function BookReaderPage() {
     const measure = () => {
       const top = readerMainRef.current?.getBoundingClientRect().top;
       if (top != null && Number.isFinite(top)) {
-        root.style.setProperty("--mobile-reader-top", `${Math.max(0, Math.round(top))}px`);
+        // Clamp to a safe band: a document-flow/scrolled measurement can return
+        // an absurd value (e.g. 1191px) that would push the fixed mobile PDF
+        // viewport / snapshot off-screen and collapse its max-height to 0.
+        const safeTop = Math.min(Math.max(Math.round(top), 120), 220);
+        root.style.setProperty("--mobile-reader-top", `${safeTop}px`);
       }
       const barH = actionBarRef.current?.getBoundingClientRect().height;
       if (barH != null && Number.isFinite(barH) && barH > 0) {
