@@ -931,10 +931,13 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-outer-gutter {
     display: none;
   }
+  /* The PDF column owns the remaining height and scrolls internally so the
+     PDF is visible immediately at the top instead of below a body scroll. */
   .reader-main {
-    height: auto;
+    flex: 1 1 auto;
     min-height: 0;
-    overflow: visible;
+    height: auto;
+    overflow: hidden;
     flex-direction: column;
   }
   .reader-main > * {
@@ -955,16 +958,24 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-toc {
     min-height: 0;
   }
+  /* PDF column fills the reader area; the scroll container owns the scrolling. */
   .reader-pdf-col {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .pdf-canvas-frame {
+    flex: 1 1 auto;
     min-height: 0;
   }
   .pdf-canvas-scroll {
-    padding: 10px 0 0;
-    justify-content: flex-start;
-    overflow-x: hidden;
-  }
-  .pdf-canvas-frame {
+    flex: 1 1 auto;
     min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Horizontal center, vertical top-align — PDF starts at the top. */
+    justify-content: center;
+    align-items: flex-start;
+    padding: 10px 0 16px;
   }
   /* Fit the PDF page to the mobile viewport. PDF.js sets an inline CSS width on
      the canvas (e.g. 595px) that overflows a ~383px phone screen; override it so
@@ -1199,6 +1210,19 @@ body.reader-mobile-overlay-open {
   background: var(--primary);
   border-color: var(--primary);
 }
+/* On mobile the reader fills the dynamic viewport so the PDF scroll area — not
+   the page body — owns scrolling, and the PDF starts at the top of that area
+   (no drag-up needed). dvh handles the mobile browser URL bar; vh is fallback. */
 .reader-layout-mobile .reader-workbench {
-  padding-bottom: 74px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: calc(74px + env(safe-area-inset-bottom));
+}
+/* Reader chrome keeps its natural height; only the PDF area (.reader-main) flexes. */
+.reader-layout-mobile .reader-workbench > :not(.reader-main) {
+  flex: 0 0 auto;
 }
