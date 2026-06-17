@@ -960,6 +960,23 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   }
   .pdf-canvas-scroll {
     padding: 10px 0 0;
+    justify-content: flex-start;
+    overflow-x: hidden;
+  }
+  .pdf-canvas-frame {
+    min-height: 0;
+  }
+  /* Fit the PDF page to the mobile viewport. PDF.js sets an inline CSS width on
+     the canvas (e.g. 595px) that overflows a ~383px phone screen; override it so
+     the page scales to the container with a proportional (auto) height. */
+  .pdf-page-stack {
+    width: 100% !important;
+    max-width: 100%;
+  }
+  .pdf-canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
   }
   .reader-paper-scroll {
     max-height: 60vh;
