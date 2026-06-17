@@ -495,7 +495,17 @@ export function BookReaderPage() {
       />
       <div className="reader-workbench">
         <ReaderTopBar book={book as StudentBook} onToggleHistory={scrollToChat} />
-        <ReaderTabs active={activeTab} onChange={setActiveTab} />
+        <ReaderTabs
+          active={rightPanel === "notes" ? "smart-note" : activeTab}
+          onChange={(tab) => {
+            if (tab === "smart-note") {
+              setActiveTab("smart-book");
+              setRightPanel("notes");
+            } else {
+              setActiveTab(tab);
+            }
+          }}
+        />
 
         {activeTab === "smart-book" ? (
           <>
@@ -597,14 +607,6 @@ export function BookReaderPage() {
               )}
             </div>
           </>
-        ) : activeTab === "smart-note" ? (
-          <SmartNotesPanel
-            bookId={bookId}
-            pageNumber={book.pdfFileId ? pdfPage : null}
-            chapterId={safeActiveChapter}
-            chapterTitle={activeChapterTitle}
-            refreshKey={notesRefreshKey}
-          />
         ) : (
           <TabPlaceholder label={READER_TABS.find((t) => t.key === activeTab)?.label ?? ""} />
         )}
