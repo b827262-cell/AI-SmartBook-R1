@@ -227,6 +227,12 @@ export function BookReaderPage() {
   const [pdfPage, setPdfPage] = useState(1);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [notesRefreshKey, setNotesRefreshKey] = useState(0);
+  // PDF text selection: drag-select text to copy / save as note / ask AI.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedText, setSelectedText] = useState("");
+  const [pageHasText, setPageHasText] = useState(true);
+  const [copyNotice, setCopyNotice] = useState("");
+  const [aiPrefill, setAiPrefill] = useState<{ text: string; nonce: number } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -411,6 +417,73 @@ export function BookReaderPage() {
     }
   }
 
+  // ---- PDF text selection actions ----------------------------------------
+  function selectionSourcePrefix(): string {
+    const parts = [book?.title, activeChapterTitle, book?.pdfFileId ? `P${pdfPage}` : null].filter(
+      (p): p is string => !!p
+    );
+    return `來源：${parts.join(" / ")}`;
+  }
+
+  async function onCopySelection() {
+    const text = selectedText.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyNotice("已複製到剪貼簿");
+    } catch {
+      // Fallback when the Clipboard API is blocked (permission / insecure ctx).
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopyNotice(ok ? "已複製到剪貼簿" : "無法複製，請手動選取後 Ctrl+C");
+      } catch {
+        setCopyNotice("無法複製，請手動選取後 Ctrl+C");
+      }
+    }
+    window.setTimeout(() => setCopyNotice(""), 2500);
+  }
+
+  async function onSelectionToNote() {
+    const text = selectedText.trim();
+    if (!text || !book) return;
+    setRightPanel("notes");
+    const title = `PDF 摘錄 - ${activeChapterTitle ?? (book.pdfFileId ? `第 ${pdfPage} 頁` : "內容")}`;
+    const content = `${selectionSourcePrefix()}\n\n${text}`;
+    try {
+      await studentClient.createNote(bookId, {
+        type: "text",
+        title: title.slice(0, 80),
+        content,
+        chapterId: safeActiveChapter,
+        pageNumber: book.pdfFileId ? pdfPage : null
+      });
+      setNotesRefreshKey((k) => k + 1);
+      setSelectedText("");
+    } catch (e) {
+      window.alert(`加入筆記失敗：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  function onAskAiAboutSelection() {
+    const text = selectedText.trim();
+    if (!text) return;
+    setRightPanel("ai");
+    setAiPrefill({
+      text: `請整理以下 PDF 圈選文字的重點，並用條列方式說明：\n\n${text}`,
+      nonce: Date.now()
+    });
+    requestAnimationFrame(() =>
+      chatRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    );
+  }
+
   function jumpToPage(page: number) {
     const clamped = clamp(page, 1, pageCount ?? Number.MAX_SAFE_INTEGER);
     setPdfPage(clamped);
@@ -517,6 +590,11 @@ export function BookReaderPage() {
               onToggleFullWidth={toggleFullWidth}
               tocCollapsed={collapsed}
               onToggleToc={() => setCollapsed((v) => !v)}
+              selectionMode={selectionMode}
+              onToggleSelection={() => {
+                setSelectionMode((v) => !v);
+                setSelectedText("");
+              }}
               aiOpen={rightPanel === "ai"}
               onToggleAi={() => setRightPanel((p) => (p === "ai" ? null : "ai"))}
               notesOpen={rightPanel === "notes"}
@@ -532,6 +610,34 @@ export function BookReaderPage() {
               onNextPage={nextPage}
               onAskAi={scrollToChat}
             />
+
+            {selectionMode && (
+              <div className="pdf-select-bar">
+                {selectedText ? (
+                  <>
+                    <span className="pdf-select-info">
+                      已選取 {selectedText.length} 字
+                    </span>
+                    <button type="button" className="tool-btn" onClick={() => void onCopySelection()}>
+                      複製
+                    </button>
+                    <button type="button" className="tool-btn" onClick={() => void onSelectionToNote()}>
+                      加入筆記
+                    </button>
+                    <button type="button" className="tool-btn ask" onClick={onAskAiAboutSelection}>
+                      問AI重點
+                    </button>
+                    {copyNotice ? <span className="pdf-select-info">{copyNotice}</span> : null}
+                  </>
+                ) : (
+                  <span className="pdf-select-info muted">
+                    {pageHasText
+                      ? "拖曳選取 PDF 文字後，可複製 / 加入筆記 / 問AI重點。"
+                      : "此頁目前無可選取文字，可能是掃描圖像 PDF。"}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="reader-main">
               {!collapsed && (
@@ -566,8 +672,11 @@ export function BookReaderPage() {
                     page={pdfPage}
                     zoom={zoom}
                     watermarkText={watermarkText}
+                    selectable={selectionMode}
                     onPageCount={setPageCount}
                     onError={setPdfError}
+                    onSelectedText={setSelectedText}
+                    onPageHasText={setPageHasText}
                   />
                 ) : (
                   <div className="reader-pdf-status-wrap">
@@ -589,6 +698,7 @@ export function BookReaderPage() {
                     quickPrompts={QUICK_PROMPTS}
                     inputPlaceholder="問 AI 問題（支援貼上圖片）..."
                     onSaveAnswer={saveAiAnswerAsNote}
+                    prefill={aiPrefill}
                   />
                 </div>
               )}

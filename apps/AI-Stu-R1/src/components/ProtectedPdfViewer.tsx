@@ -22,19 +22,27 @@ export function ProtectedPdfViewer({
   page,
   zoom,
   watermarkText,
+  selectable = false,
   onPageCount,
-  onError
+  onError,
+  onSelectedText,
+  onPageHasText
 }: {
   blob: Blob;
   page: number;
   zoom: number;
   watermarkText: string;
+  selectable?: boolean;
   onPageCount?: (count: number) => void;
   onError?: (message: string) => void;
+  onSelectedText?: (text: string) => void;
+  onPageHasText?: (hasText: boolean) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
+  const textLayerTaskRef = useRef<{ cancel: () => void } | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [message, setMessage] = useState("");
 
@@ -116,6 +124,32 @@ export function ProtectedPdfViewer({
         renderTaskRef.current = task;
         await task.promise;
         renderTaskRef.current = null;
+
+        // Selectable text layer overlaid on the canvas (for copy / notes / AI).
+        // Failure here must not break rendering — the page still displays.
+        const textLayerDiv = textLayerRef.current;
+        if (textLayerDiv) {
+          if (textLayerTaskRef.current) {
+            textLayerTaskRef.current.cancel();
+            textLayerTaskRef.current = null;
+          }
+          textLayerDiv.replaceChildren();
+          textLayerDiv.style.setProperty("--scale-factor", String(zoom / 100));
+          try {
+            const textContent = await pdfPage.getTextContent();
+            if (cancelled) return;
+            const textLayer = new pdfjsLib.TextLayer({
+              textContentSource: textContent,
+              container: textLayerDiv,
+              viewport
+            });
+            textLayerTaskRef.current = textLayer;
+            await textLayer.render();
+            onPageHasText?.(textContent.items.length > 0);
+          } catch {
+            onPageHasText?.(false);
+          }
+        }
       } catch (err) {
         // A cancelled render (page/zoom changed mid-render) is expected; ignore.
         const name = err instanceof Error ? err.name : "";
@@ -134,9 +168,19 @@ export function ProtectedPdfViewer({
         renderTaskRef.current.cancel();
         renderTaskRef.current = null;
       }
+      if (textLayerTaskRef.current) {
+        textLayerTaskRef.current.cancel();
+        textLayerTaskRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, page, zoom]);
+
+  // Report the current selection text when selection mode is active.
+  function reportSelection() {
+    if (!selectable) return;
+    onSelectedText?.((window.getSelection()?.toString() ?? "").trim());
+  }
 
   return (
     <div className="pdf-canvas-frame">
@@ -147,10 +191,15 @@ export function ProtectedPdfViewer({
         {status === "error" && (
           <p className="error-text pdf-canvas-status">{message}</p>
         )}
-        <canvas
-          ref={canvasRef}
-          className={`pdf-canvas ${status === "ready" ? "" : "is-hidden"}`}
-        />
+        <div className={`pdf-page-stack ${status === "ready" ? "" : "is-hidden"}`}>
+          <canvas ref={canvasRef} className="pdf-canvas" />
+          <div
+            ref={textLayerRef}
+            className={`pdf-text-layer ${selectable ? "selectable" : ""}`}
+            onMouseUp={reportSelection}
+            onPointerUp={reportSelection}
+          />
+        </div>
       </div>
       <div className="student-pdf-watermark" aria-hidden="true">
         {WATERMARK_TILES.map((tile) => (

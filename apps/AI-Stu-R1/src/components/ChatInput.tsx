@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface TextAttachment {
   id: string;
@@ -32,16 +32,28 @@ function uid(): string {
 export function ChatInput({
   disabled,
   onSend,
-  placeholder = "向這本書提問…"
+  placeholder = "向這本書提問…",
+  prefill
 }: {
   disabled?: boolean;
   onSend: (text: string) => void;
   placeholder?: string;
+  prefill?: { text: string; nonce: number } | null;
 }) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [note, setNote] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Prefill the composer from an external source (e.g. a PDF text selection).
+  useEffect(() => {
+    if (prefill && prefill.text) {
+      setText(prefill.text);
+      inputRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.nonce]);
 
   async function addFiles(files: File[]): Promise<void> {
     const next: Attachment[] = [];
@@ -164,6 +176,7 @@ export function ChatInput({
           }}
         />
         <input
+          ref={inputRef}
           className="chat-text"
           value={text}
           onChange={(e) => setText(e.target.value)}

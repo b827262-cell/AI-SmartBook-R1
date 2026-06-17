@@ -36,6 +36,8 @@ export function PdfReaderToolbar({
   onToggleFullWidth,
   tocCollapsed,
   onToggleToc,
+  selectionMode,
+  onToggleSelection,
   aiOpen,
   onToggleAi,
   notesOpen,
@@ -58,6 +60,8 @@ export function PdfReaderToolbar({
   onToggleFullWidth: () => void;
   tocCollapsed: boolean;
   onToggleToc: () => void;
+  selectionMode: boolean;
+  onToggleSelection: () => void;
   aiOpen: boolean;
   onToggleAi: () => void;
   notesOpen: boolean;
@@ -178,6 +182,15 @@ export function PdfReaderToolbar({
           ))}
         </select>
       </label>
+
+      <button
+        type="button"
+        className={`tool-btn ${selectionMode ? "active" : ""}`}
+        onClick={onToggleSelection}
+        title="文字選取：拖曳選取 PDF 文字後可複製 / 加入筆記 / 問AI重點"
+      >
+        🔖 {selectionMode ? "結束選取" : "文字選取"}
+      </button>
 
       <button
         type="button"

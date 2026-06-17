@@ -24,7 +24,8 @@ export function ChatPanel({
   subtitle,
   quickPrompts = [],
   inputPlaceholder,
-  onSaveAnswer
+  onSaveAnswer,
+  prefill
 }: {
   bookId: string;
   chapterId?: string;
@@ -33,6 +34,7 @@ export function ChatPanel({
   quickPrompts?: string[];
   inputPlaceholder?: string;
   onSaveAnswer?: (content: string) => void;
+  prefill?: { text: string; nonce: number } | null;
 }) {
   const [messages, setMessages] = useState<ChatMessageItem[]>([GREETING]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export function ChatPanel({
           ))}
         </div>
       )}
-      <ChatInput disabled={busy} onSend={send} placeholder={inputPlaceholder} />
+      <ChatInput disabled={busy} onSend={send} placeholder={inputPlaceholder} prefill={prefill} />
     </div>
   );
 }
