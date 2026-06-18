@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent
+} from "react";
 import { Link, useParams } from "react-router-dom";
 import type { BookChapter, ReaderOutlineNode, ReaderOutlineSource } from "@ai-smartbook/schema";
 import { studentClient, type BookDetail } from "../studentClient";
@@ -38,6 +46,11 @@ const OUTER_LAYOUT_KEY = "smartbook.reader.outerLayout";
 const LAYOUT_RATIO_KEY = "smartbook.reader.layoutRatio";
 const OUTER_GUTTER_MIN = 16;
 const OUTER_GUTTER_MAX = 520;
+const MOBILE_TOUCH_LEFT_ZONE = 0.28;
+const MOBILE_TOUCH_RIGHT_ZONE = 0.72;
+const MOBILE_TOUCH_TAP_DELTA = 14;
+const MOBILE_TOUCH_TAP_DURATION = 450;
+const MOBILE_NOTICE_DURATION = 1500;
 type MobileReaderPanel = "toc" | "ai" | "notes";
 
 function clamp(value: number, min: number, max: number): number {
@@ -233,6 +246,10 @@ export function BookReaderPage() {
   const [selectedText, setSelectedText] = useState("");
   const [pageHasText, setPageHasText] = useState(true);
   const [copyNotice, setCopyNotice] = useState("");
+  const [mobileNotice, setMobileNotice] = useState("");
+  const [mobilePageInput, setMobilePageInput] = useState("");
+  const [showMobileControls, setShowMobileControls] = useState(true);
+  const [showPageJumpBar, setShowPageJumpBar] = useState(false);
   const [aiPrefill, setAiPrefill] = useState<{ text: string; nonce: number } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -249,6 +266,10 @@ export function BookReaderPage() {
   const outerLayoutRef = useRef<HTMLDivElement>(null);
   const readerMainRef = useRef<HTMLDivElement>(null);
   const actionBarRef = useRef<HTMLDivElement>(null);
+  const pageJumpInputRef = useRef<HTMLInputElement>(null);
+  const touchZoneRef = useRef<HTMLElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const mobileNoticeTimerRef = useRef<number | null>(null);
   const isMobile = viewportWidth <= 768;
   const isTablet = viewportWidth >= 769 && viewportWidth <= 1024;
 
@@ -281,6 +302,8 @@ export function BookReaderPage() {
   useEffect(() => {
     if (!isMobile) {
       setMobilePanel(null);
+      setShowMobileControls(true);
+      setShowPageJumpBar(false);
       return;
     }
     return;
@@ -294,6 +317,39 @@ export function BookReaderPage() {
     };
   }, [isMobile, mobilePanel]);
 
+  // Keep virtual keyboard offsets available for mobile layout (page jump/input
+  // overlays should stay above Android soft keyboards).
+  useEffect(() => {
+    const root = outerLayoutRef.current;
+    if (!root || !isMobile) {
+      if (root) {
+        root.style.removeProperty("--reader-keyboard-bottom");
+        root.style.removeProperty("--reader-visual-height");
+      }
+      return;
+    }
+    const vv = window.visualViewport;
+    if (!vv) {
+      root.style.setProperty("--reader-keyboard-bottom", "0px");
+      root.style.setProperty("--reader-visual-height", `${window.innerHeight}px`);
+      return;
+    }
+    function updateKeyboardMetrics() {
+      const keyboardBottom = Math.max(0, Math.round(window.innerHeight - vv.height));
+      root.style.setProperty("--reader-keyboard-bottom", `${keyboardBottom}px`);
+      root.style.setProperty("--reader-visual-height", `${Math.round(vv.height)}px`);
+    }
+    updateKeyboardMetrics();
+    vv.addEventListener("resize", updateKeyboardMetrics);
+    vv.addEventListener("scroll", updateKeyboardMetrics);
+    window.addEventListener("orientationchange", updateKeyboardMetrics);
+    return () => {
+      vv.removeEventListener("resize", updateKeyboardMetrics);
+      vv.removeEventListener("scroll", updateKeyboardMetrics);
+      window.removeEventListener("orientationchange", updateKeyboardMetrics);
+    };
+  }, [isMobile]);
+
   // Lock the page body scroll while reading on mobile so the body never becomes
   // the PDF scroll container (the pinned .pdf-canvas-frame owns scrolling).
   const isMobileReading = isMobile && activeTab === "smart-book";
@@ -302,6 +358,41 @@ export function BookReaderPage() {
     document.body.classList.add("reader-reading-mobile");
     return () => document.body.classList.remove("reader-reading-mobile");
   }, [isMobileReading]);
+
+  useEffect(() => {
+    if (!showPageJumpBar || !isMobile) return;
+    setMobilePageInput(String(pdfPage));
+    const raf = requestAnimationFrame(() => {
+      pageJumpInputRef.current?.focus();
+      pageJumpInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isMobile, pdfPage, showPageJumpBar]);
+
+  useEffect(() => {
+    if (!showPageJumpBar || !isMobile) return;
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      const target = event.target as EventTarget | null;
+      const element = target instanceof Element ? target : null;
+      if (!element) return;
+      const inJumpBar = element.closest(".reader-page-jump-bar") != null;
+      const inJumpInput = pageJumpInputRef.current?.contains(element) ?? false;
+      if (inJumpBar || inJumpInput) return;
+      setShowPageJumpBar(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [isMobile, showPageJumpBar]);
+
+  useEffect(() => {
+    return () => {
+      if (mobileNoticeTimerRef.current != null) {
+        clearTimeout(mobileNoticeTimerRef.current);
+      }
+    };
+  }, []);
 
   // Measure the reader chrome height (top of .reader-main) and the bottom action
   // bar so the fixed mobile PDF viewport sits exactly between them. Re-measures
@@ -384,6 +475,13 @@ export function BookReaderPage() {
     setPdfPage(1);
     setPageCount(null);
     setPdfError("");
+    setMobileNotice("");
+    if (mobileNoticeTimerRef.current != null) {
+      clearTimeout(mobileNoticeTimerRef.current);
+      mobileNoticeTimerRef.current = null;
+    }
+    setShowPageJumpBar(false);
+    setShowMobileControls(true);
   }, [bookId]);
 
   useEffect(() => {
@@ -508,14 +606,21 @@ export function BookReaderPage() {
   function openMobilePanel(panel: MobileReaderPanel) {
     if (!isMobile) return;
     setMobilePanel((current) => (current === panel ? null : panel));
+    setShowMobileControls(true);
+    setShowPageJumpBar(false);
   }
   function closeMobilePanel() {
-    if (isMobile) setMobilePanel(null);
+    if (isMobile) {
+      setMobilePanel(null);
+      setShowPageJumpBar(false);
+    }
   }
 
   function setPanelForContext(panel: "ai" | "notes" | null) {
     if (isMobile) {
       setMobilePanel(panel);
+      setShowMobileControls(true);
+      setShowPageJumpBar(false);
       return;
     }
     setRightPanel(panel);
@@ -617,9 +722,127 @@ export function BookReaderPage() {
     });
   }
 
+  function setMobileNoticeMessage(message: string, duration = MOBILE_NOTICE_DURATION) {
+    if (!isMobile) return;
+    setMobileNotice(message);
+    if (mobileNoticeTimerRef.current != null) {
+      clearTimeout(mobileNoticeTimerRef.current);
+    }
+    mobileNoticeTimerRef.current = window.setTimeout(() => {
+      setMobileNotice("");
+    }, duration);
+    if (navigator.vibrate) {
+      navigator.vibrate(20);
+    }
+  }
+
+  function toggleMobileControls() {
+    setShowMobileControls((current) => !current);
+  }
+
+  function toggleMobilePageJumpBar() {
+    if (!book.pdfFileId) return;
+    setShowPageJumpBar((current) => !current);
+    setShowMobileControls(true);
+  }
+
   function jumpToPage(page: number) {
     const clamped = clamp(page, 1, pageCount ?? Number.MAX_SAFE_INTEGER);
+    if (isMobile && pageCount != null) {
+      if (page < 1) {
+        setMobileNoticeMessage("已到達第一頁");
+      } else if (page > pageCount) {
+        setMobileNoticeMessage("已到達最後一頁");
+      }
+    }
     setPdfPage(clamped);
+  }
+
+  function applyMobilePageJump() {
+    const raw = mobilePageInput.trim();
+    if (!raw) {
+      setShowPageJumpBar(false);
+      return;
+    }
+    const target = Number(raw);
+    if (!Number.isInteger(target)) {
+      setMobileNoticeMessage("頁碼格式錯誤");
+      return;
+    }
+    jumpToPage(target);
+    setShowPageJumpBar(false);
+  }
+
+  function onMobilePageJumpKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      applyMobilePageJump();
+    }
+  }
+
+  function onPdfTouchZonePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!isMobile || !book.pdfFileId) return;
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (
+      target.closest(
+        "button, a, input, select, textarea, .pdf-text-layer, .reader-page-jump-bar, .reader-mobile-action-bar"
+      ) != null
+    ) {
+      return;
+    }
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    touchStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      t: performance.now()
+    };
+  }
+
+  function onPdfTouchZonePointerUp(event: PointerEvent<HTMLDivElement>) {
+    const zone = touchZoneRef.current;
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+
+    if (!isMobile || !zone || !start || !book.pdfFileId) return;
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    if (performance.now() - start.t > MOBILE_TOUCH_TAP_DURATION) return;
+    const diffX = Math.abs(event.clientX - start.x);
+    const diffY = Math.abs(event.clientY - start.y);
+    if (diffX > MOBILE_TOUCH_TAP_DELTA || diffY > MOBILE_TOUCH_TAP_DELTA) return;
+
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest("button, a, input, select, textarea, .pdf-text-layer, .reader-mobile-action-bar, .reader-page-jump-bar") !=
+        null
+    ) {
+      return;
+    }
+
+    const rect = zone.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const topEdge = Math.min(72, rect.height * 0.32);
+
+    if (x < rect.width * MOBILE_TOUCH_LEFT_ZONE) {
+      prevPage();
+      return;
+    }
+    if (x > rect.width * MOBILE_TOUCH_RIGHT_ZONE) {
+      nextPage();
+      return;
+    }
+    if (y <= topEdge) {
+      toggleMobileControls();
+      return;
+    }
+    toggleMobilePageJumpBar();
+  }
+
+  function onPdfTouchZonePointerCancel() {
+    touchStartRef.current = null;
   }
 
   function selectOutlineNode(nodeId: string | null) {
@@ -635,9 +858,22 @@ export function BookReaderPage() {
     }
   }
 
-  const prevPage = () => setPdfPage((p) => Math.max(1, p - 1));
+  const prevPage = () =>
+    setPdfPage((current) => {
+      if (current <= 1) {
+        setMobileNoticeMessage("已到達第一頁");
+        return 1;
+      }
+      return current - 1;
+    });
   const nextPage = () =>
-    setPdfPage((p) => (pageCount != null ? Math.min(pageCount, p + 1) : p + 1));
+    setPdfPage((current) => {
+      if (pageCount != null && current >= pageCount) {
+        setMobileNoticeMessage("已到達最後一頁");
+        return current;
+      }
+      return current + 1;
+    });
   const resizeToc = (dx: number) => setTocWidth((w) => clamp(w + dx, TOC_MIN, TOC_MAX));
   const resizeAi = (dx: number) => setAiWidth((w) => clamp(w - dx, AI_MIN, AI_MAX));
   const fullWidth = leftGutter <= OUTER_GUTTER_MIN + 4 && rightGutter <= OUTER_GUTTER_MIN + 4;
@@ -806,35 +1042,84 @@ export function BookReaderPage() {
               )}
 
               <section className="reader-pdf-col">
-                {!book.pdfFileId ? (
-                  <div className="reader-pdf-status-wrap">
-                    <p className="muted">尚未提供 PDF 教材。</p>
-                  </div>
-                ) : pdfLoading ? (
-                  <div className="reader-pdf-status-wrap">
-                    <p className="muted">Loading protected PDF…</p>
-                  </div>
-                ) : pdfError ? (
-                  <div className="reader-pdf-status-wrap">
-                    <p className="error-text">{pdfError}</p>
-                  </div>
-                ) : pdfBlob ? (
-                  <ProtectedPdfViewer
-                    blob={pdfBlob}
-                    page={pdfPage}
-                    zoom={zoom}
-                    watermarkText={watermarkText}
-                    selectable={selectionMode}
-                    onPageCount={setPageCount}
-                    onError={setPdfError}
-                    onSelectedText={setSelectedText}
-                    onPageHasText={setPageHasText}
-                  />
-                ) : (
-                  <div className="reader-pdf-status-wrap">
-                    <p className="muted">Protected PDF preview is not ready.</p>
-                  </div>
-                )}
+                <div
+                  className="reader-mobile-touch-zone"
+                  ref={touchZoneRef}
+                  onPointerDown={isMobile ? onPdfTouchZonePointerDown : undefined}
+                  onPointerUp={isMobile ? onPdfTouchZonePointerUp : undefined}
+                  onPointerCancel={isMobile ? onPdfTouchZonePointerCancel : undefined}
+                >
+                  {!book.pdfFileId ? (
+                    <div className="reader-pdf-status-wrap">
+                      <p className="muted">尚未提供 PDF 教材。</p>
+                    </div>
+                  ) : pdfLoading ? (
+                    <div className="reader-pdf-status-wrap">
+                      <p className="muted">Loading protected PDF…</p>
+                    </div>
+                  ) : pdfError ? (
+                    <div className="reader-pdf-status-wrap">
+                      <p className="error-text">{pdfError}</p>
+                    </div>
+                  ) : pdfBlob ? (
+                    <ProtectedPdfViewer
+                      blob={pdfBlob}
+                      page={pdfPage}
+                      zoom={zoom}
+                      watermarkText={watermarkText}
+                      selectable={selectionMode}
+                      onPageCount={setPageCount}
+                      onError={setPdfError}
+                      onSelectedText={setSelectedText}
+                      onPageHasText={setPageHasText}
+                    />
+                  ) : (
+                    <div className="reader-pdf-status-wrap">
+                      <p className="muted">Protected PDF preview is not ready.</p>
+                    </div>
+                  )}
+                  {showPageJumpBar ? (
+                    <div className="reader-page-jump-bar" onPointerDown={(event) => event.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="reader-page-jump-btn"
+                        onClick={prevPage}
+                        aria-label="上一頁"
+                      >
+                        ◀
+                      </button>
+                      <span className="reader-page-jump-label">
+                        第 {book.pdfFileId ? pdfPage : 0} / {pageCount != null ? pageCount : "?"} 頁
+                      </span>
+                      <input
+                        ref={pageJumpInputRef}
+                        className="reader-page-jump-input"
+                        value={mobilePageInput}
+                        inputMode="numeric"
+                        onChange={(event) => setMobilePageInput(event.target.value)}
+                        onKeyDown={onMobilePageJumpKeyDown}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      />
+                      <button
+                        type="button"
+                        className="reader-page-jump-btn"
+                        onClick={() => applyMobilePageJump()}
+                        aria-label="跳至頁碼"
+                      >
+                        跳
+                      </button>
+                      <button
+                        type="button"
+                        className="reader-page-jump-btn"
+                        onClick={nextPage}
+                        aria-label="下一頁"
+                      >
+                        ▶
+                      </button>
+                    </div>
+                  ) : null}
+                  {mobileNotice ? <div className="reader-mobile-toast">{mobileNotice}</div> : null}
+                </div>
               </section>
 
               {!isMobile && rightPanel !== null && (
@@ -971,7 +1256,10 @@ export function BookReaderPage() {
       />
       <div className="reader-outer-gutter right" aria-hidden="true" />
       {isMobile ? (
-        <div className="reader-mobile-action-bar" ref={actionBarRef}>
+        <div
+          className={`reader-mobile-action-bar ${showMobileControls ? "" : "is-hidden"}`.trim()}
+          ref={actionBarRef}
+        >
           <Link to="/books" className="reader-mobile-action-btn">
             返回
           </Link>

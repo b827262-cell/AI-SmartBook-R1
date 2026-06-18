@@ -1002,7 +1002,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-layout-mobile .pdf-canvas-frame {
     position: fixed;
     top: var(--mobile-reader-top, 160px);
-    bottom: var(--mobile-reader-bottom, 64px);
+    bottom: calc(var(--mobile-reader-bottom, 64px) + var(--reader-keyboard-bottom, 0px));
     left: 0;
     right: 0;
     min-height: 0;
@@ -1041,8 +1041,10 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
      A separate bounded top is used: the measured --mobile-reader-top can be a
      broken document-flow value, so cap it at 220px so the page stays on-screen. */
   .reader-layout-mobile {
+    --reader-keyboard-bottom: 0px;
+    --reader-visual-height: 100dvh;
     --mobile-snapshot-top: min(var(--mobile-reader-top, 200px), 220px);
-    --mobile-snapshot-bottom: var(--mobile-reader-bottom, 74px);
+    --mobile-snapshot-bottom: calc(var(--mobile-reader-bottom, 74px) + var(--reader-keyboard-bottom, 0px));
   }
   .reader-layout-mobile .pdf-page-stack.has-snapshot {
     position: relative;
@@ -1057,7 +1059,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
     max-width: 100%;
     height: auto !important;
     max-height: calc(
-      100dvh - var(--mobile-snapshot-top) - var(--mobile-snapshot-bottom)
+      var(--reader-visual-height, 100dvh) - var(--mobile-snapshot-top) - var(--mobile-snapshot-bottom)
     ) !important;
     object-fit: contain !important;
     z-index: 70 !important;
@@ -1079,6 +1081,12 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   }
   .reader-paper-scroll {
     max-height: 60vh;
+  }
+  .reader-mobile-touch-zone {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
   }
   .reader-topbar {
     grid-template-columns: auto 1fr auto;
@@ -1103,6 +1111,76 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   }
   .reader-mobile-sheet {
     max-height: min(calc(100vh - 18px), 920px);
+  }
+  .reader-page-jump-bar {
+    position: fixed;
+    z-index: 74;
+    left: 8px;
+    right: 8px;
+    bottom: calc(
+      72px +
+      env(safe-area-inset-bottom, 0px) +
+      var(--reader-keyboard-bottom, 0px)
+    );
+    display: grid;
+    grid-template-columns: 36px 1fr 74px 36px 36px;
+    gap: 6px;
+    align-items: center;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+  }
+  .reader-page-jump-label {
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .reader-page-jump-input {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 8px;
+    text-align: center;
+    color: var(--text);
+    background: #fff;
+  }
+  .reader-page-jump-btn {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    min-height: 34px;
+    cursor: pointer;
+  }
+  .reader-page-jump-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .reader-mobile-toast {
+    position: fixed;
+    z-index: 74;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(130px + env(safe-area-inset-bottom, 0px) + var(--reader-keyboard-bottom, 0px));
+    background: rgba(15, 23, 42, 0.84);
+    color: #fff;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    max-width: calc(100vw - 20px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -1297,6 +1375,18 @@ body.reader-mobile-overlay-open {
   color: #fff;
   background: var(--primary);
   border-color: var(--primary);
+}
+.reader-mobile-action-bar.is-hidden {
+  display: none;
+}
+
+/* Mobile page jump bar + gesture helpers ----------------------------------- */
+.reader-mobile-touch-zone {
+  position: relative;
+  min-height: 0;
+}
+.reader-page-jump-bar {
+  pointer-events: auto;
 }
 /* On mobile the reader chrome (top bar / tabs / toolbar) flows normally at the
    top; the PDF viewport is pinned (position:fixed) below it, so the workbench
