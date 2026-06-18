@@ -879,7 +879,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   border-radius: 8px;
   padding: 6px 8px;
   font: inherit;
-  font-size: 13px;
+  font-size: 16px;
   text-align: center;
 }
 .tool-page-input.invalid {
@@ -1002,7 +1002,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-layout-mobile .pdf-canvas-frame {
     position: fixed;
     top: var(--mobile-reader-top, 160px);
-    bottom: calc(var(--mobile-reader-bottom, 64px) + var(--reader-keyboard-bottom, 0px));
+    bottom: var(--mobile-reader-bottom, 64px);
     left: 0;
     right: 0;
     min-height: 0;
@@ -1044,7 +1044,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
     --reader-keyboard-bottom: 0px;
     --reader-visual-height: 100dvh;
     --mobile-snapshot-top: min(var(--mobile-reader-top, 200px), 220px);
-    --mobile-snapshot-bottom: calc(var(--mobile-reader-bottom, 74px) + var(--reader-keyboard-bottom, 0px));
+    --mobile-snapshot-bottom: var(--mobile-reader-bottom, 74px);
   }
   .reader-layout-mobile .pdf-page-stack.has-snapshot {
     position: relative;
@@ -1087,6 +1087,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
     width: 100%;
     height: 100%;
     min-height: 0;
+    touch-action: pan-y;
   }
   .reader-topbar {
     grid-template-columns: auto 1fr auto;
@@ -1146,7 +1147,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
     border: 1px solid var(--border);
     border-radius: 8px;
     font: inherit;
-    font-size: 13px;
+    font-size: 16px;
     padding: 6px 8px;
     text-align: center;
     color: var(--text);

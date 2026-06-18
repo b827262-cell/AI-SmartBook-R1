@@ -46,11 +46,31 @@ const OUTER_LAYOUT_KEY = "smartbook.reader.outerLayout";
 const LAYOUT_RATIO_KEY = "smartbook.reader.layoutRatio";
 const OUTER_GUTTER_MIN = 16;
 const OUTER_GUTTER_MAX = 520;
-const MOBILE_TOUCH_LEFT_ZONE = 0.28;
-const MOBILE_TOUCH_RIGHT_ZONE = 0.72;
+const MOBILE_TOUCH_TOP_ZONE = 0.2;
+const MOBILE_TOUCH_BOTTOM_ZONE = 0.8;
+const MOBILE_TOUCH_LEFT_ZONE = 0.3;
+const MOBILE_TOUCH_RIGHT_ZONE = 0.7;
 const MOBILE_TOUCH_TAP_DELTA = 14;
 const MOBILE_TOUCH_TAP_DURATION = 450;
 const MOBILE_NOTICE_DURATION = 1500;
+const MOBILE_TOUCH_IGNORE_SELECTOR = [
+  "button",
+  "a",
+  "input",
+  "select",
+  "textarea",
+  '[role="button"]',
+  ".pdf-text-layer",
+  ".reader-page-jump-bar",
+  ".reader-mobile-action-bar",
+  ".reader-mobile-overlay",
+  ".reader-mobile-sheet",
+  ".reader-topbar",
+  ".pdf-toolbar",
+  ".pdf-select-bar",
+  ".reader-note-panel",
+  ".text-selection-toolbar"
+].join(", ");
 type MobileReaderPanel = "toc" | "ai" | "notes";
 
 function clamp(value: number, min: number, max: number): number {
@@ -779,16 +799,32 @@ export function BookReaderPage() {
     }
   }
 
+  function hasIgnoredMobileTouchTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && target.closest(MOBILE_TOUCH_IGNORE_SELECTOR) != null;
+  }
+
+  function hasSelectedText(): boolean {
+    return (window.getSelection()?.toString() ?? "").trim().length > 0;
+  }
+
   function onPdfTouchZonePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (!isMobile || !book.pdfFileId) return;
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (
-      target.closest(
-        "button, a, input, select, textarea, .pdf-text-layer, .reader-page-jump-bar, .reader-mobile-action-bar"
-      ) != null
-    ) {
+    const activeElement = document.activeElement;
+    const editableElement =
+      activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement
+        ? activeElement
+        : activeElement instanceof HTMLElement && activeElement.isContentEditable
+          ? activeElement
+          : null;
+    if (editableElement && target.closest(".reader-page-jump-bar") == null) {
+      editableElement.blur();
+      touchStartRef.current = null;
+      return;
+    }
+    if (hasIgnoredMobileTouchTarget(target) || hasSelectedText()) {
       return;
     }
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -811,34 +847,32 @@ export function BookReaderPage() {
     const diffY = Math.abs(event.clientY - start.y);
     if (diffX > MOBILE_TOUCH_TAP_DELTA || diffY > MOBILE_TOUCH_TAP_DELTA) return;
 
-    const target = event.target;
-    if (
-      target instanceof Element &&
-      target.closest("button, a, input, select, textarea, .pdf-text-layer, .reader-mobile-action-bar, .reader-page-jump-bar") !=
-        null
-    ) {
+    if (hasIgnoredMobileTouchTarget(event.target) || hasSelectedText()) {
       return;
     }
 
     const rect = zone.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const topEdge = Math.min(72, rect.height * 0.32);
+    const nx = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    const ny = clamp((event.clientY - rect.top) / rect.height, 0, 1);
 
-    if (x < rect.width * MOBILE_TOUCH_LEFT_ZONE) {
-      prevPage();
+    if (ny >= MOBILE_TOUCH_BOTTOM_ZONE) {
+      toggleMobilePageJumpBar();
       return;
     }
-    if (x > rect.width * MOBILE_TOUCH_RIGHT_ZONE) {
-      nextPage();
-      return;
-    }
-    if (y <= topEdge) {
+    if (ny <= MOBILE_TOUCH_TOP_ZONE) {
       toggleMobileControls();
       return;
     }
-    toggleMobilePageJumpBar();
+    if (nx <= MOBILE_TOUCH_LEFT_ZONE) {
+      prevPage();
+      return;
+    }
+    if (nx >= MOBILE_TOUCH_RIGHT_ZONE) {
+      nextPage();
+      return;
+    }
+    toggleMobileControls();
   }
 
   function onPdfTouchZonePointerCancel() {
@@ -1094,9 +1128,11 @@ export function BookReaderPage() {
                       <input
                         ref={pageJumpInputRef}
                         className="reader-page-jump-input"
+                        type="text"
                         value={mobilePageInput}
                         inputMode="numeric"
-                        onChange={(event) => setMobilePageInput(event.target.value)}
+                        pattern="[0-9]*"
+                        onChange={(event) => setMobilePageInput(event.target.value.replace(/\D/g, ""))}
                         onKeyDown={onMobilePageJumpKeyDown}
                         onPointerDown={(event) => event.stopPropagation()}
                       />

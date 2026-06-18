@@ -151,12 +151,13 @@ export function PdfReaderToolbar({
         </span>
         <input
           className={`tool-page-input ${pageError ? "invalid" : ""}`}
+          type="text"
           value={pageInput}
           inputMode="numeric"
           pattern="[0-9]*"
           aria-label="輸入 PDF 頁碼"
           title={pageError || "輸入 PDF 頁碼後按 Enter"}
-          onChange={(event) => setPageInput(event.target.value)}
+          onChange={(event) => setPageInput(event.target.value.replace(/\D/g, ""))}
           onKeyDown={onPageInputKeyDown}
           onBlur={() => {
             if (pageInput.trim() === "") setPageInput(page != null ? String(page) : "");
