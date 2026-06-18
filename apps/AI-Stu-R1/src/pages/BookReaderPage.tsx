@@ -268,6 +268,7 @@ export function BookReaderPage() {
   const [copyNotice, setCopyNotice] = useState("");
   const [mobileNotice, setMobileNotice] = useState("");
   const [mobilePageInput, setMobilePageInput] = useState("");
+  const [mobileBarPageInput, setMobileBarPageInput] = useState("1");
   const [showMobileControls, setShowMobileControls] = useState(true);
   const [showPageJumpBar, setShowPageJumpBar] = useState(false);
   const [aiPrefill, setAiPrefill] = useState<{ text: string; nonce: number } | null>(null);
@@ -413,6 +414,10 @@ export function BookReaderPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    setMobileBarPageInput(String(pdfPage));
+  }, [pdfPage]);
 
   // Measure the reader chrome height (top of .reader-main) and the bottom action
   // bar so the fixed mobile PDF viewport sits exactly between them. Re-measures
@@ -799,6 +804,24 @@ export function BookReaderPage() {
     }
   }
 
+  function applyMobileBarJump() {
+    const raw = mobileBarPageInput.trim();
+    if (!raw) {
+      setMobileBarPageInput(String(pdfPage));
+      return;
+    }
+    const target = Number(raw);
+    if (!Number.isInteger(target)) {
+      setMobileNoticeMessage("頁碼格式錯誤");
+      return;
+    }
+    jumpToPage(target);
+  }
+
+  function onMobileBarJumpKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") applyMobileBarJump();
+  }
+
   function hasIgnoredMobileTouchTarget(target: EventTarget | null): boolean {
     return target instanceof Element && target.closest(MOBILE_TOUCH_IGNORE_SELECTOR) != null;
   }
@@ -1083,6 +1106,20 @@ export function BookReaderPage() {
                   onPointerUp={isMobile ? onPdfTouchZonePointerUp : undefined}
                   onPointerCancel={isMobile ? onPdfTouchZonePointerCancel : undefined}
                 >
+                  {isMobile && book.pdfFileId ? (
+                    <>
+                      <div
+                        className="reader-mobile-touch-zone-half left"
+                        data-testid="mobile-touch-zone-left"
+                        aria-hidden="true"
+                      />
+                      <div
+                        className="reader-mobile-touch-zone-half right"
+                        data-testid="mobile-touch-zone-right"
+                        aria-hidden="true"
+                      />
+                    </>
+                  ) : null}
                   {!book.pdfFileId ? (
                     <div className="reader-pdf-status-wrap">
                       <p className="muted">尚未提供 PDF 教材。</p>
@@ -1296,30 +1333,83 @@ export function BookReaderPage() {
           className={`reader-mobile-action-bar ${showMobileControls ? "" : "is-hidden"}`.trim()}
           ref={actionBarRef}
         >
-          <Link to="/books" className="reader-mobile-action-btn">
-            返回
-          </Link>
-          <button
-            type="button"
-            className={`reader-mobile-action-btn ${isMobileTocOpen ? "active" : ""}`}
-            onClick={() => openMobilePanel("toc")}
-          >
-            目錄
-          </button>
-          <button
-            type="button"
-            className={`reader-mobile-action-btn ${isMobileChatOpen ? "active" : ""}`}
-            onClick={() => revealAiPanelWithPrefill(null)}
-          >
-            問AI
-          </button>
-          <button
-            type="button"
-            className={`reader-mobile-action-btn ${isMobileNotesOpen ? "active" : ""}`}
-            onClick={() => openMobilePanel("notes")}
-          >
-            筆記
-          </button>
+          {book.pdfFileId ? (
+            <div
+              className="reader-mobile-page-controls"
+              data-testid="mobile-page-jump"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="reader-mobile-page-btn"
+                data-testid="mobile-prev-page"
+                onClick={prevPage}
+                disabled={pdfPage <= 1}
+                aria-label="上一頁"
+              >
+                ◀
+              </button>
+              <span className="reader-mobile-page-label">
+                {pdfPage}{pageCount != null ? ` / ${pageCount}` : ""}
+              </span>
+              <input
+                className="reader-mobile-page-input"
+                data-testid="mobile-page-input"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={mobileBarPageInput}
+                onChange={(e) => setMobileBarPageInput(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={onMobileBarJumpKeyDown}
+                onFocus={(e) => e.currentTarget.select()}
+                aria-label="輸入頁碼"
+              />
+              <button
+                type="button"
+                className="reader-mobile-page-btn"
+                onClick={applyMobileBarJump}
+                aria-label="跳至頁碼"
+              >
+                跳
+              </button>
+              <button
+                type="button"
+                className="reader-mobile-page-btn"
+                data-testid="mobile-next-page"
+                onClick={nextPage}
+                disabled={pageCount != null && pdfPage >= pageCount}
+                aria-label="下一頁"
+              >
+                ▶
+              </button>
+            </div>
+          ) : null}
+          <div className="reader-mobile-action-buttons">
+            <Link to="/books" className="reader-mobile-action-btn">
+              返回
+            </Link>
+            <button
+              type="button"
+              className={`reader-mobile-action-btn ${isMobileTocOpen ? "active" : ""}`}
+              onClick={() => openMobilePanel("toc")}
+            >
+              目錄
+            </button>
+            <button
+              type="button"
+              className={`reader-mobile-action-btn ${isMobileChatOpen ? "active" : ""}`}
+              onClick={() => revealAiPanelWithPrefill(null)}
+            >
+              問AI
+            </button>
+            <button
+              type="button"
+              className={`reader-mobile-action-btn ${isMobileNotesOpen ? "active" : ""}`}
+              onClick={() => openMobilePanel("notes")}
+            >
+              筆記
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
