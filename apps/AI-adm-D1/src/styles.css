@@ -181,17 +181,23 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
   padding-bottom: 4px;
 }
 .admin-accounts-table {
-  min-width: 1400px;
+  table-layout: fixed;
+  width: 1590px;
   border-collapse: collapse;
 }
 .admin-accounts-table th,
 .admin-accounts-table td {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   vertical-align: middle;
   padding: 8px 12px;
 }
 .admin-accounts-col-management {
-  min-width: 225px;
+  width: 110px;
+}
+.admin-accounts-table td.admin-accounts-col-management {
+  overflow: visible;
 }
 .admin-accounts-table th.admin-accounts-col-management,
 .admin-accounts-table td.admin-accounts-col-management {

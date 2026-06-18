@@ -105,21 +105,36 @@ export function AdminAccountsPage() {
         ) : (
           <div className="admin-table-wrap admin-accounts-table-wrap">
             <table className="admin-accounts-table">
+              <colgroup>
+                <col style={{ width: 240 }} />
+                <col style={{ width: 220 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 110 }} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>編號</th>
-                  <th>學生名稱</th>
-                  <th>登入方式</th>
-                  <th>作業系統</th>
-                  <th>裝置類型</th>
-                  <th>瀏覽器</th>
-                  <th>IP 位址</th>
-                  <th>裝置連線</th>
-                  <th>風險標記</th>
-                  <th>封鎖狀態</th>
-                  <th>最後上線時間</th>
-                  <th>目前狀態</th>
-                  <th className="admin-accounts-col-management">管理</th>
+                  <th title="編號">編號</th>
+                  <th title="學生名稱">學生名稱</th>
+                  <th title="登入方式">登入方式</th>
+                  <th title="作業系統">作業系統</th>
+                  <th title="裝置類型">裝置類型</th>
+                  <th title="瀏覽器">瀏覽器</th>
+                  <th title="IP 位址">IP 位址</th>
+                  <th title="裝置連線">裝置連線</th>
+                  <th title="風險標記">風險標記</th>
+                  <th title="封鎖狀態">封鎖狀態</th>
+                  <th title="最後上線時間">最後上線時間</th>
+                  <th title="目前狀態">目前狀態</th>
+                  <th className="admin-accounts-col-management" title="管理">管理</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,14 +143,14 @@ export function AdminAccountsPage() {
                   const busy = busyId === a.sessionId;
                   return (
                     <tr key={a.sessionId}>
-                      <td><code>{a.id}</code></td>
-                      <td>{a.name}</td>
-                      <td>{a.loginMethod}</td>
-                      <td>{a.osName}</td>
-                      <td>{a.deviceType}</td>
-                      <td>{a.browserName}</td>
-                      <td><code>{a.ipAddress ?? "—"}</code></td>
-                      <td className="muted">{a.ipLocation}</td>
+                      <td title={a.id}><code>{a.id}</code></td>
+                      <td title={a.name}>{a.name}</td>
+                      <td title={a.loginMethod}>{a.loginMethod}</td>
+                      <td title={a.osName}>{a.osName}</td>
+                      <td title={a.deviceType}>{a.deviceType}</td>
+                      <td title={a.browserName}>{a.browserName}</td>
+                      <td title={a.ipAddress ?? "—"}><code>{a.ipAddress ?? "—"}</code></td>
+                      <td className="muted" title={a.ipLocation}>{a.ipLocation}</td>
                       <td>
                         <span className={`badge ${risk.badge}`}>{risk.label}</span>
                       </td>
@@ -148,18 +163,18 @@ export function AdminAccountsPage() {
                           <span className="badge">正常</span>
                         )}
                       </td>
-                      <td className="muted">{formatTime(a.lastSeenAt)}</td>
+                      <td className="muted" title={formatTime(a.lastSeenAt)}>{formatTime(a.lastSeenAt)}</td>
                       <td>
                         <span className={`badge ${a.online ? "parsed" : "draft"}`}>
                           {a.online ? "在線" : "離線"}
                         </span>
                       </td>
                       <td className="admin-accounts-col-management">
-                        <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                        <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                           <select
                             value={a.riskLevel}
                             disabled={busy}
-                            style={{ width: "auto" }}
+                            style={{ minWidth: 0, flex: "1 1 0" }}
                             onChange={(e) => onChangeRisk(a, e.target.value as RiskLevel)}
                           >
                             {RISK_OPTIONS.map((lvl) => (
@@ -174,7 +189,7 @@ export function AdminAccountsPage() {
                             disabled={busy}
                             onClick={() => onToggleBlock(a)}
                           >
-                            {a.isBlocked ? "解除封鎖" : "封鎖"}
+                            {a.isBlocked ? "解除" : "封鎖"}
                           </button>
                         </div>
                       </td>
