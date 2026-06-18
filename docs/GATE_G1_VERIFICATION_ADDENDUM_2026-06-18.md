@@ -81,7 +81,7 @@ chapter-summarizer.ts
 ## 4. 待修正項（報告被信任前必補）
 
 1. **把斷言轉為量測**：修復 pnpm 執行環境，實跑 `pnpm install && pnpm -r typecheck && pnpm -r build`，將「斷言的 blocker」轉為「實測的 blocker」。並驗證：移除 `@ai-smartbook/ai`、`@ai-smartbook/db` 後 typecheck 是否如預期失敗於 §2.2 各點。
-2. **SHA 對齊**：摘要稱報告 Commit SHA 為 `13ae2c8`，但 repo 內報告檔記載為 `2b3c65c4…`。需確認報告實際釘定的 SHA 並統一。
+2. **SHA 對齊**：已於 commit `4a3d66c01c98b428568bcbe74d221e160d9f53ec` 修正。`docs/CODEX_GPT_5_3_GATE_OPTION_A_REPORT_2026-06-18.md` 目前已釘定實際新增回報檔的 commit `13ae2c8883374c18454bcff936206e99560ff4f1`。
 3. **狀態理由更正**：將狀態描述改為「typecheck/build 未執行（pnpm 環境失敗）；G1 耦合由原始碼檢視確認（附 file:line），尚未經 typecheck 實測」。
 
 ---
