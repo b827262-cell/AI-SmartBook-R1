@@ -89,12 +89,14 @@ Use pointer events, not full-screen overlay buttons.
 Touch zones:
 
 | Area | Behavior |
-|---|---|
+| :---- | :---- |
 | Left 30% | Previous page |
 | Right 30% | Next page |
 | Top 20% | Toggle reader controls |
 | Bottom 20% | Show page jump bar |
 | Center | Toggle reader controls |
+
+NOTE: These zones overlap in the four corners. The authoritative, non-ambiguous resolution is defined in **C1 (Touch-Zone Resolution Order)** under `## Constraints (Do NOT violate)`. C1 overrides this table.
 
 Ignore touch-zone behavior when target is inside:
 
@@ -152,6 +154,59 @@ Simulator should verify:
 9. Last page plus right tap shows `已經是最後一頁`.
 10. Input focus plus PDF background tap blurs input and does not flip page.
 
+## Constraints (Do NOT violate)
+
+These constraints override any looser wording above. If an earlier section conflicts with this one, this section wins.
+
+### C1. Touch-Zone Resolution Order (overrides the Section 4 table)
+
+The Section 4 zones overlap in the four corners. Resolve every qualifying tap with this deterministic order. Evaluate top to bottom; first match wins; stop.
+
+1. If `event.target` matches the Section 4 ignore-list (`button, input, textarea, select, a, [role="button"], .text-selection-toolbar, .mobile-page-jump-bar, .reader-note-panel`) -> do nothing.
+2. If text is currently selected, OR pointer travel from pointerdown to pointerup is > 12px -> treat as scroll/select, do nothing.
+3. Compute normalized coordinates against the wrapper rect, using `window.visualViewport` width/height when available: `nx = (clientX - rect.left) / rect.width`; `ny = (clientY - rect.top) / rect.height`.
+4. First match wins:
+   - `ny >= 0.80` -> show page jump bar.
+   - `ny <= 0.20` -> toggle reader controls.
+   - `nx <= 0.30` -> previous page, only reached when `0.20 < ny < 0.80`.
+   - `nx >= 0.70` -> next page, only reached when `0.20 < ny < 0.80`.
+   - else center -> toggle reader controls.
+
+Result: top/bottom bands win in the corners; left/right page-turn applies only to the middle vertical band (`0.20-0.80`). No tap can resolve to two actions.
+
+### C2. position: fixed ancestor purity (known mobile-reader regression class)
+
+The page jump bar and all toasts use `position: fixed` and depend on the visual viewport. Any `transform`, `filter`, `perspective`, or `will-change: transform` on an ancestor turns `fixed` into containing-block-relative positioning and reintroduces the verified Android Chrome viewport bug.
+
+- Do NOT add `transform` / `filter` / `perspective` / `will-change: transform` to any ancestor of the PDF scroll container, the page jump bar, or the toast layer, including for animations.
+- If an entrance animation is needed, animate `opacity` / `bottom` only on a leaf element that has no `position: fixed` descendants.
+
+### C3. Do NOT touch the existing fixed PDF scroll container
+
+The PDF scroll container is already pinned with `position: fixed` + `top` / `bottom` anchoring, NOT `height: 100vh`. This is the verified fix for Android Chrome initial PDF visibility. Touching it reintroduces the address-bar reflow bug.
+
+- The new `min-height: 100vh; min-height: 100dvh;` rules apply ONLY to the page-jump-bar positioning context / reader layout shell. Do NOT apply `min-height`, `height: 100vh`, or `100dvh` to the PDF scroll container or any of its ancestors.
+- Do NOT change the PDF scroll container's `position` / `top` / `bottom` / `overflow` rules.
+- Keyboard-safe offset for the jump bar = `env(safe-area-inset-bottom, 0px) + var(--reader-keyboard-bottom, 0px)`, driven by VisualViewport, never by altering the PDF container.
+
+### C4. Touch-zone listener must not break native scroll
+
+- Do NOT call `preventDefault()` on `pointermove` / `touchmove` inside the PDF scroll container.
+- Do NOT use `setPointerCapture` on the scroll container.
+- Keep `touch-action: pan-y;` on the touch-zone wrapper; the zone decision happens only on `pointerup`.
+
+### C5. Stacking order
+
+- Page jump bar: above the PDF, below any open TOC / AI / Notes bottom sheet and the text-selection toolbar.
+- Touch-zone wrapper: below all interactive reader UI; it must never overlay or block sheets, toolbars, inputs, or buttons.
+
+### Acceptance additions (objective gates)
+
+- [ ] Each of the four corners produces exactly ONE action, matching C1.
+- [ ] No ancestor of jump bar / toast / PDF container has `transform` / `filter` / `will-change` (grep the changed files).
+- [ ] PDF scroll container CSS is unchanged; `git diff` shows no change to its `position` / `top` / `bottom` / `overflow` rules.
+- [ ] `pnpm build` / `pnpm typecheck` passing is NOT acceptance; an S25 Ultra manual pass of C1-C5 is required before final acceptance.
+
 ## Codex Task
 
 Task: Implement Android Chrome mobile Reader UX with page-number jump, touch-zone navigation, keyboard-safe layout, background blur, and first/last page feedback.
@@ -171,6 +226,8 @@ Implementation scope:
 8. Preserve Android Chrome PDF snapshot visibility.
 9. Preserve desktop layout.
 
+All implementation MUST satisfy `## Constraints (Do NOT violate)` (C1-C5).
+
 Validation:
 
 - Run available checks such as `pnpm build` and `pnpm typecheck`.
@@ -179,12 +236,12 @@ Validation:
 
 Git workflow:
 
-1. Confirm branch: `git branch --show-current`
-2. Check worktree: `git status --short`
-3. Inspect diff: `git diff --stat` and `git diff --name-only`
+1. Confirm branch: `git branch --show-current`.
+2. Check worktree: `git status --short`.
+3. Inspect diff: `git diff --stat` and `git diff --name-only`.
 4. Stage only relevant files.
-5. Commit: `feat(reader): add mobile page jump touch navigation`
-6. Push: `git push origin feat/student-category-cover-reader-chat`
+5. Commit: `feat(reader): add mobile page jump touch navigation`.
+6. Push: `git push origin feat/student-category-cover-reader-chat`.
 
 Termination report must include:
 
@@ -215,6 +272,9 @@ Termination report must include:
 - [ ] Smart note side panel still works.
 - [ ] TOC still works.
 - [ ] Desktop layout unchanged.
+- [ ] Four-corner taps each resolve to exactly one action (C1).
+- [ ] PDF scroll container CSS unchanged in `git diff` (C3).
+- [ ] No transform/filter/will-change on fixed-element ancestors (C2).
 
 ## Recommended Order
 
