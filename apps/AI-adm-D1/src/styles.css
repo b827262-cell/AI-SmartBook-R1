@@ -182,7 +182,7 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 }
 .admin-accounts-table {
   table-layout: fixed;
-  width: 1590px;
+  width: 1250px;
   border-collapse: collapse;
 }
 .admin-accounts-table th,
@@ -193,8 +193,50 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
   vertical-align: middle;
   padding: 8px 12px;
 }
+/* multi-line grouped cells */
+.admin-accounts-table td.admin-device-env-cell,
+.admin-accounts-table td.admin-network-cell {
+  white-space: normal;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.admin-device-env,
+.admin-network-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.admin-device-env span,
+.admin-network-inner span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 1.4;
+}
+/* status lights */
+.admin-status-lights {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.admin-status-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  cursor: default;
+}
+.admin-status-dot.green  { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,0.20); }
+.admin-status-dot.yellow { background: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.20); }
+.admin-status-dot.red    { background: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.20); }
+.admin-status-dot.gray   { background: #9ca3af; box-shadow: 0 0 0 2px rgba(156,163,175,0.20); }
+/* session id mono */
+.admin-session-id { font-size: 11px; letter-spacing: 0; }
 .admin-accounts-col-management {
-  width: 110px;
+  width: 120px;
 }
 .admin-accounts-table td.admin-accounts-col-management {
   overflow: visible;
