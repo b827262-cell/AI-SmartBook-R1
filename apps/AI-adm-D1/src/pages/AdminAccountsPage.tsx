@@ -9,7 +9,6 @@ function formatTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("zh-Hant");
 }
 
-// Map each risk level to its label and an existing badge colour class.
 const RISK_META: Record<RiskLevel, { label: string; badge: string }> = {
   safe: { label: "安全", badge: "published" },
   risk: { label: "風險", badge: "draft" },
@@ -39,7 +38,6 @@ export function AdminAccountsPage() {
     void load();
   }, [load]);
 
-  // Run an admin mutation, then refresh the list so badges/state stay accurate.
   const runAction = useCallback(
     async (sessionId: string, action: () => Promise<unknown>) => {
       setBusyId(sessionId);
@@ -105,8 +103,8 @@ export function AdminAccountsPage() {
         ) : accounts.length === 0 ? (
           <p className="muted">目前尚無前台使用者編號紀錄。</p>
         ) : (
-          <div className="admin-table-wrap">
-            <table>
+          <div className="admin-table-wrap admin-accounts-table-wrap">
+            <table className="admin-accounts-table">
               <thead>
                 <tr>
                   <th>編號</th>
@@ -116,12 +114,12 @@ export function AdminAccountsPage() {
                   <th>裝置類型</th>
                   <th>瀏覽器</th>
                   <th>IP 位址</th>
-                  <th>IP 位置</th>
+                  <th>裝置連線</th>
                   <th>風險標記</th>
                   <th>封鎖狀態</th>
                   <th>最後上線時間</th>
                   <th>目前狀態</th>
-                  <th>管理</th>
+                  <th className="admin-accounts-col-management">管理</th>
                 </tr>
               </thead>
               <tbody>
@@ -156,7 +154,7 @@ export function AdminAccountsPage() {
                           {a.online ? "在線" : "離線"}
                         </span>
                       </td>
-                      <td>
+                      <td className="admin-accounts-col-management">
                         <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
                           <select
                             value={a.riskLevel}

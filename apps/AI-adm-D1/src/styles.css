@@ -175,6 +175,29 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 
 /* Tables / info */
 .admin-table-wrap { overflow-x: auto; }
+.admin-accounts-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.admin-accounts-table {
+  min-width: 1400px;
+  border-collapse: collapse;
+}
+.admin-accounts-table th,
+.admin-accounts-table td {
+  white-space: nowrap;
+  vertical-align: middle;
+  padding: 8px 12px;
+}
+.admin-accounts-col-management {
+  min-width: 225px;
+}
+.admin-accounts-table th.admin-accounts-col-management,
+.admin-accounts-table td.admin-accounts-col-management {
+  background: #fff;
+}
+
 .admin-info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
 .admin-info-grid > div { display: flex; flex-direction: column; gap: 4px; }
 .admin-row-actions { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -459,6 +482,13 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 }
 @media (min-width: 901px) {
   .admin-hamburger, .admin-overlay { display: none; }
+  .admin-accounts-col-management {
+    position: sticky;
+    right: 0;
+    background: #fff;
+    box-shadow: -10px 0 8px -6px rgba(15, 98, 214, 0.2);
+    z-index: 2;
+  }
 }
 
 /* Subject breakdown list (dashboard) */
