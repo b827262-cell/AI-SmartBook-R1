@@ -9,8 +9,8 @@
 
 ## 1. 最終狀態
 
-- 狀態：failure
-- Commit SHA：2b3c65c4a9721f2c6f4377e1ce7532c5a86d489e
+- 狀態：failure（Option A 執行方向正確，但本次驗證未完成）
+- Commit SHA：13ae2c8883374c18454bcff936206e99560ff4f1
 - Changed files：
   - `docs/CODEX_GPT_5_3_GATE_OPTION_A_REPORT_2026-06-18.md`
 
@@ -52,12 +52,16 @@ G1 是否仍保留為 blocker：yes
 
 - Remaining risks：
   - `pnpm` 無法在目前執行環境開啟其 metadata 資料庫，導致 `pnpm -r typecheck` 與 `pnpm -r build` 無法得到實際專案結果。
+  - 本次驗證未完成；需要在可正常執行 pnpm 的環境重跑完整 `typecheck/build`。
 - Next Sprint recommendation：
-  - 在可正常執行 pnpm 的環境重跑一次完整 `typecheck/build`；保留本次 boundary-check 結果為 G1 既有問題。
+  - 在可正常執行 pnpm 的環境重跑一次完整 `typecheck/build`。
+  - 保留本次 boundary-check 結果為 G1 既有問題。
+  - 下一 Sprint 再處理 `book-core` 純函數化與 ai/db boundary 解耦。
 
 ---
 
 ## 6. 終止判斷
 
-執行過程中 `typecheck` 與 `build` 命令未能在可用環境下完成（`pnpm` 本體報錯），故判斷為 **failure**；
-`boundary-check` 則僅顯示已知 G1 問題，未出現其他新 blocker。
+執行過程中 `typecheck` 與 `build` 命令未能在可用環境下完成（`pnpm` 本體報錯），故判斷為 **failure / environment blocker**。
+
+Option A 執行方向正確：本次未重構 `book-core`、未移除 ai/db dependency，且 `boundary-check` 僅顯示已知 G1 問題，未出現其他新 blocker。
