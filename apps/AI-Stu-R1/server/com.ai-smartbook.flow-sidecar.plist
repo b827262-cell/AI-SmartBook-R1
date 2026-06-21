@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ai-smartbook.flow-sidecar</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/chihweichen/.local/bin/node</string>
+        <string>/Users/chihweichen/project/AI-SmartBook-R1/apps/AI-Stu-R1/server/flow-sidecar.mjs</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>FLOW_JSON_PATH</key>
+        <string>/Users/chihweichen/project/tw-legal-flow/data/processed/discovered/latest_flow.json</string>
+        <key>FLOW_SIDECAR_PORT</key>
+        <string>4350</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/chihweichen/project/AI-SmartBook-R1/apps/AI-Stu-R1/logs/flow-sidecar.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/chihweichen/project/AI-SmartBook-R1/apps/AI-Stu-R1/logs/flow-sidecar.err.log</string>
+</dict>
+</plist>

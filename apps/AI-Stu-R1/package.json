@@ -9,7 +9,8 @@
     "server:build": "esbuild server/stu-api.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist-server/stu-api.mjs --external:better-sqlite3 --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\"",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"lint placeholder\"",
-    "server:dev": "tsx server/stu-api.ts"
+    "server:dev": "tsx server/stu-api.ts",
+    "flow:sidecar": "node server/flow-sidecar.mjs"
   },
   "dependencies": {
     "@ai-smartbook/schema": "workspace:*",
