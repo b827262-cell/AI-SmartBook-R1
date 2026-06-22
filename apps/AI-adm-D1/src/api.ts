@@ -16,7 +16,9 @@ import type {
   PdfJsonIndex,
   StoredJsonIndexSummary,
   CreateBookInput,
-  UpdateBookInput
+  UpdateBookInput,
+  SmartSolveImportJob,
+  SmartSolveImportItem
 } from "@ai-smartbook/schema";
 
 export interface ChapterInput {
@@ -318,7 +320,35 @@ export const adminApi = {
       method: "POST",
       body: form
     });
-  }
+  },
+
+  importSmartSolveJson: (bookId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return http<{
+      job: SmartSolveImportJob;
+      summary: {
+        totalRecords: number;
+        validRecords: number;
+        mappedRecords: number;
+        unmappedRecords: number;
+        invalidRecords: number;
+      };
+    }>(`/api/admin/books/${bookId}/imports/smart-solve/jobs`, {
+      method: "POST",
+      body: form
+    });
+  },
+
+  listSmartSolveImportJobs: (bookId: string) =>
+    http<{ jobs: SmartSolveImportJob[] }>(
+      `/api/admin/books/${bookId}/imports/smart-solve/jobs`
+    ),
+
+  getSmartSolveImportJob: (bookId: string, jobId: string) =>
+    http<{ job: SmartSolveImportJob; items: SmartSolveImportItem[] }>(
+      `/api/admin/books/${bookId}/imports/smart-solve/jobs/${jobId}`
+    )
 };
 
 export type DashboardRange = "week" | "month" | "all";
