@@ -142,7 +142,18 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_pdf_access_logs_session ON pdf_access_logs(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_ai_jobs_book ON book_ai_jobs(book_id)`,
   `CREATE INDEX IF NOT EXISTS idx_book_qa_logs_book ON book_qa_logs(book_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_smart_book_notes_book ON smart_book_notes(book_id)`
+  `CREATE INDEX IF NOT EXISTS idx_smart_book_notes_book ON smart_book_notes(book_id)`,
+  `CREATE TABLE IF NOT EXISTS question_bank_import_jobs (
+    id TEXT PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    total_records INTEGER NOT NULL DEFAULT 0,
+    valid_records INTEGER NOT NULL DEFAULT 0,
+    invalid_records INTEGER NOT NULL DEFAULT 0,
+    result_json TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL
+  )`
 ];
 
 /**

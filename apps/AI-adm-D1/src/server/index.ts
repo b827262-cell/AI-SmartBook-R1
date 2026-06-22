@@ -45,6 +45,7 @@ import {
   pdfJsonIndexSchema,
   createSmartBookNoteInputSchema,
   updateSmartBookNoteInputSchema,
+  questionBankJsonFileSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
   type BookFile,
@@ -55,7 +56,8 @@ import {
   type ReaderTocInputNode,
   type ReaderTocImportPayload,
   type PdfJsonIndex,
-  type StoredJsonIndexSummary
+  type StoredJsonIndexSummary,
+  type QuestionBankImportJob
 } from "@ai-smartbook/schema";
 
 const { db, sqlite } = getDb();
@@ -2283,6 +2285,60 @@ app.post("/api/admin/appearance-settings/upload", appearanceUpload.single("file"
   const file = (req as Request & { file?: Express.Multer.File }).file;
   if (!file) return fail(res, 400, "image is required (png/jpg/jpeg/webp/svg, <=2MB)");
   res.status(201).json({ url: `/api/uploads/appearance/${file.filename}` });
+});
+
+// ---- Question Bank JSON Import -------------------------------------------
+
+const qbiUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+app.post("/api/admin/import/question-bank/jobs", qbiUpload.single("file"), (req, res) => {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) return fail(res, 400, "JSON file is required (multipart field 'file')");
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(file.buffer.toString("utf8"));
+  } catch {
+    return fail(res, 400, "invalid JSON: could not parse file");
+  }
+
+  const parsed = questionBankJsonFileSchema.safeParse(raw);
+  if (!parsed.success) return fail(res, 400, `invalid question bank JSON: ${parsed.error.message}`);
+
+  const items = Array.isArray(parsed.data) ? parsed.data : parsed.data.questions;
+  const errors: { index: number; message: string }[] = [];
+
+  items.forEach((item, i) => {
+    const hasNumber = item.question_number != null || item.questionNumber != null || item.number != null;
+    if (!hasNumber) errors.push({ index: i, message: "missing question number" });
+    if (!item.question?.trim()) errors.push({ index: i, message: "missing question text" });
+  });
+
+  const validRecords = items.length - new Set(errors.map((e) => e.index)).size;
+  const jobStatus = errors.length === items.length && items.length > 0 ? "failed" : "done";
+
+  const job = repos.questionBankImports.create({
+    fileName: file.originalname,
+    status: jobStatus,
+    totalRecords: items.length,
+    validRecords,
+    invalidRecords: new Set(errors.map((e) => e.index)).size,
+    resultJson: JSON.stringify({ errors }),
+    errorMessage: jobStatus === "failed" ? "all records are invalid" : null
+  });
+
+  res.status(201).json({ job, errors });
+});
+
+app.get("/api/admin/import/question-bank/jobs", (_req, res) => {
+  const jobs: QuestionBankImportJob[] = repos.questionBankImports.findRecent(20);
+  res.json({ jobs });
+});
+
+app.get("/api/admin/import/question-bank/jobs/:jobId", (req, res) => {
+  const job = repos.questionBankImports.findById(req.params.jobId);
+  if (!job) return fail(res, 404, "job not found");
+  res.json({ job });
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);
