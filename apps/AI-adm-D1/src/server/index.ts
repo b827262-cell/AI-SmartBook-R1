@@ -1934,6 +1934,23 @@ app.delete("/api/student/books/:bookId/notes/:noteId", (req, res) => {
   res.json({ deleted: true });
 });
 
+app.get("/api/student/books/:bookId/notes/:noteId/navigate", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const note = repos.notes.findById(String(req.params.noteId));
+  if (!note || note.bookId !== book.id) return fail(res, 404, "note not found");
+  const hasNavigation = note.pageNumber != null || note.chapterId != null;
+  return res.json({
+    noteId: note.id,
+    bookId: note.bookId,
+    chapterId: note.chapterId,
+    pageNumber: note.pageNumber,
+    sourceMessageId: note.sourceMessageId,
+    anchor: hasNavigation,
+    fallback: hasNavigation ? null : "此筆記沒有頁碼或章節資訊"
+  });
+});
+
 app.post("/api/student/books/:bookId/session", (req, res) => {
   const book = findPublishedBook(String(req.params.bookId));
   if (!book) return fail(res, 404, "book not found");

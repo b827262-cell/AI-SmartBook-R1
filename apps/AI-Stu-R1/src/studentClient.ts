@@ -111,5 +111,16 @@ export const studentClient = {
   deleteNote: (bookId: string, noteId: string) =>
     http<{ deleted: boolean }>(`/api/student/books/${bookId}/notes/${noteId}`, {
       method: "DELETE"
-    })
+    }),
+
+  navigateNote: (bookId: string, noteId: string) =>
+    http<{
+      noteId: string;
+      bookId: string;
+      chapterId: string | null;
+      pageNumber: number | null;
+      sourceMessageId: string | null;
+      anchor: boolean;
+      fallback: string | null;
+    }>(`/api/student/books/${bookId}/notes/${noteId}/navigate`)
 };
