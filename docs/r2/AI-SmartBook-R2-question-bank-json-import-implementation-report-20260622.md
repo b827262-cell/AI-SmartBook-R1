@@ -116,30 +116,48 @@ Errors fixed during implementation:
 
 ## Build / Typecheck Result
 
-- **TypeScript typecheck**: PASS (no errors)
-- **Build**: Not run (no `pnpm build` executed in this session — build environment requires the full service stack)
-- **Runtime check**: Not run (no live services available in this session)
+- **TypeScript typecheck**: PASS (no errors, verified via `tsc --noEmit`)
+- **Frontend build (vite)**: PASS — 140 modules transformed, 247ms, output ~408 kB JS + 14 kB CSS
+- **Runtime — `runMigrations()`**: PASS — `question_bank_import_jobs` table auto-created on server start via `CREATE TABLE IF NOT EXISTS` in `migrate.ts`; table persists in `data/ai-smartbook-r1.db`
+
+## Runtime API Verification
+
+Server: `AI-adm-D1` on port 4300, DB: `data/ai-smartbook-r1.db`
+
+| Test | Method | Path | Result |
+|------|--------|------|--------|
+| List jobs (empty) | GET | `/api/admin/import/question-bank/jobs` | `{"jobs":[]}` — PASS |
+| Import 3 valid items (array format) | POST | `/api/admin/import/question-bank/jobs` | `status: "done", totalRecords: 3, validRecords: 3` — PASS |
+| Import 1 valid item (wrapper format `{questions:[...]}`) | POST | same | `status: "done", totalRecords: 1, validRecords: 1` — PASS |
+| Malformed JSON | POST | same | `400 {"error":"invalid JSON: could not parse file"}` — PASS |
+| Get job by ID | GET | `/api/admin/import/question-bank/jobs/:id` | Full job record returned — PASS |
+| Get non-existent job | GET | same | `404 {"error":"job not found"}` — PASS |
+| List jobs (after imports) | GET | `/api/admin/import/question-bank/jobs` | 2 job records returned — PASS |
+| DB persistence | — | SQLite direct query | 2 rows confirmed in `question_bank_import_jobs` — PASS |
+| Admin frontend | GET | `http://localhost:5174/` | HTTP 200 — PASS |
 
 ---
 
 ## Commit SHA
 
-See git log after push.
+`9bc0f78` (initial implementation)
+`<verification commit SHA>` — see push result below
 
 ---
 
 ## Push Result
 
-See push command output.
+Initial push: `feat/r2-question-bank-json-import` (new branch) created on `b827262-cell/AI-SmartBook-R1`.
+Verification update: see git log for second commit SHA.
 
 ---
 
 ## Limitations
 
-1. The `question_bank_import_jobs` table is defined in schema but `runMigrations()` (in `packages/db/src/migrate.ts`) must support auto-creating new tables. If it is a strict migration system, a migration file is needed.
-2. Import only validates and records the job — it does NOT write question items to any persistent questions table (no `QuestionItem` table exists yet). The full question persistence layer is outside this minimal slice.
-3. Validation errors for duplicate question numbers are not yet detected (only missing number and missing question text are checked).
-4. No authentication check on the import endpoints beyond the existing admin boundary.
+1. ~~`runMigrations()` migration compatibility~~ — **verified**: `CREATE TABLE IF NOT EXISTS` in `migrate.ts` STATEMENTS array runs on server start; table is created automatically.
+2. Import validates and records jobs but does NOT write question items to a persistent `QuestionItem` table (no such table exists yet). Full question persistence is outside this minimal slice.
+3. Duplicate question number detection is not implemented (only missing number / empty question text are checked per-item).
+4. No additional authentication beyond the existing admin server boundary.
 
 ---
 
