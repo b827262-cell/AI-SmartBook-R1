@@ -2,6 +2,8 @@
 set -euo pipefail
 
 sudo mkdir -p /etc/ai-stu-r1
+# Ensure the SQLite DB parent directory exists so the student API can open it.
+sudo mkdir -p /opt/AI-Stu-R1/data
 if [ ! -f /etc/ai-stu-r1/student.env ]; then
   sudo cp deploy/systemd/student.env.example /etc/ai-stu-r1/student.env
 fi
