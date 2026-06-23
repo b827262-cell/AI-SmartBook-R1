@@ -57,12 +57,12 @@ Best sequence:
 
 ---
 
-# 3. Agent 1 — Core PDF Screenshot Selection
+# 3. Agent 1 — Claude / Core PDF Screenshot Selection
 
 ## 3.1 Suggested model
 
 ```text
-Claude Sonnet 4.6 Medium/High
+Claude
 ```
 
 ## 3.2 Branch
@@ -82,13 +82,22 @@ feat/r2-integrate-imports-notes
 Agent 1 owns the core Reader workflow:
 
 ```text
-1. Add 截圖問 AI button in PDF Reader toolbar.
-2. Add screenshot selection mode.
-3. Add orange rectangle, dim overlay, corner handles.
-4. Add confirm/cancel controls.
-5. Capture selected PDF canvas region.
-6. Add modal shell with image preview.
-7. Keep Reader stable after close/cancel.
+1. PDF Reader 新增「截圖問 AI」。
+2. 框選模式。
+3. 橘色框線與四角控制點。
+4. 截取 PDF canvas 區域。
+5. 顯示截圖預覽 modal shell。
+```
+
+Expanded implementation detail:
+
+```text
+- add toolbar entry in the existing Reader flow
+- enter/exit screenshot selection mode cleanly
+- render orange selection rectangle with resize handles
+- support confirm/cancel without destabilizing the Reader
+- capture the selected area from the rendered PDF canvas
+- show a modal shell with the captured image preview
 ```
 
 Recommended files:
@@ -125,12 +134,15 @@ Create branch:
 feat/r2-pdf-screenshot-ask-ai-core
 
 Scope:
-- Reader toolbar button: 截圖問 AI
-- selection overlay
-- orange selection box and handles
-- confirm/cancel
-- capture selected PDF canvas area
-- modal shell with image preview
+- PDF Reader 新增「截圖問 AI」
+- 框選模式
+- 橘色框線與四角控制點
+- 截取 PDF canvas 區域
+- 顯示截圖預覽 modal shell
+
+Expected supporting behavior:
+- add confirm/cancel controls if needed to complete the screenshot flow
+- keep the Reader stable after close/cancel
 
 Do not implement external provider config in this task.
 Do not add backend upload or DB migration.
