@@ -10,6 +10,7 @@ import { BookDetail } from "./pages/BookDetail";
 import { ChaptersPage } from "./pages/ChaptersPage";
 import { QaPage } from "./pages/QaPage";
 import { QuestionBankImportPage } from "./pages/QuestionBankImportPage";
+import { SmartSolveImportPage } from "./pages/SmartSolveImportPage";
 
 export function App() {
   return (
@@ -22,6 +23,7 @@ export function App() {
             <Route path="/admin/accounts" element={<AdminAccountsPage />} />
             <Route path="/admin/appearance" element={<AppearanceSettingsPage />} />
             <Route path="/admin/import/question-bank" element={<QuestionBankImportPage />} />
+            <Route path="/admin/import/smart-solve" element={<SmartSolveImportPage />} />
             <Route path="/admin/books" element={<BooksPage />} />
             <Route path="/admin/books/new" element={<NewBookPage />} />
             {/* Dedicated reader-management pages take precedence over the tabbed detail. */}

@@ -157,6 +157,42 @@ export const questionBankImportJobs = sqliteTable("question_bank_import_jobs", {
   createdAt: text("created_at").notNull()
 });
 
+export const smartSolveImportJobs = sqliteTable("smart_solve_import_jobs", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull(),
+  fileName: text("file_name").notNull(),
+  status: text("status").notNull().default("pending"),
+  totalRecords: integer("total_records").notNull().default(0),
+  validRecords: integer("valid_records").notNull().default(0),
+  mappedRecords: integer("mapped_records").notNull().default(0),
+  unmappedRecords: integer("unmapped_records").notNull().default(0),
+  invalidRecords: integer("invalid_records").notNull().default(0),
+  resultJson: text("result_json"),
+  errorMessage: text("error_message"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
+export const smartSolveImportItems = sqliteTable("smart_solve_import_items", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull(),
+  bookId: text("book_id").notNull(),
+  externalId: text("external_id"),
+  title: text("title"),
+  prompt: text("prompt").notNull(),
+  solution: text("solution"),
+  explanation: text("explanation"),
+  skill: text("skill"),
+  difficulty: text("difficulty"),
+  scopeJson: text("scope_json"),
+  tagsJson: text("tags_json"),
+  metadataJson: text("metadata_json"),
+  status: text("status").notNull().default("unmapped"),
+  errorJson: text("error_json"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
 export type DbSchema = {
   books: typeof books;
   bookFiles: typeof bookFiles;
@@ -170,6 +206,8 @@ export type DbSchema = {
   appSettings: typeof appSettings;
   smartBookNotes: typeof smartBookNotes;
   questionBankImportJobs: typeof questionBankImportJobs;
+  smartSolveImportJobs: typeof smartSolveImportJobs;
+  smartSolveImportItems: typeof smartSolveImportItems;
 };
 
 export const schema = {
@@ -184,5 +222,7 @@ export const schema = {
   bookQaLogs,
   appSettings,
   smartBookNotes,
-  questionBankImportJobs
+  questionBankImportJobs,
+  smartSolveImportJobs,
+  smartSolveImportItems
 };

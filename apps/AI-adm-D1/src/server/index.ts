@@ -57,7 +57,8 @@ import {
   type ReaderTocImportPayload,
   type PdfJsonIndex,
   type StoredJsonIndexSummary,
-  type QuestionBankImportJob
+  type QuestionBankImportJob,
+  smartSolveJsonFileSchema
 } from "@ai-smartbook/schema";
 
 const { db, sqlite } = getDb();
@@ -2339,6 +2340,175 @@ app.get("/api/admin/import/question-bank/jobs/:jobId", (req, res) => {
   const job = repos.questionBankImports.findById(req.params.jobId);
   if (!job) return fail(res, 404, "job not found");
   res.json({ job });
+});
+
+// ── Smart Solve JSON Import ──────────────────────────────────────────────────
+const ssUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+app.post(
+  "/api/admin/books/:bookId/imports/smart-solve/jobs",
+  ssUpload.single("file"),
+  (req, res) => {
+    const bookId = String(req.params.bookId);
+    const book = repos.books.findById(bookId);
+    if (!book) return fail(res, 404, "book not found");
+
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (!file) return fail(res, 400, "file is required");
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(file.buffer.toString("utf-8"));
+    } catch {
+      return fail(res, 400, "invalid JSON: could not parse file");
+    }
+
+    const fileResult = smartSolveJsonFileSchema.safeParse(parsed);
+    if (!fileResult.success) {
+      return res.status(400).json({
+        error: "file schema validation failed",
+        issues: fileResult.error.issues.slice(0, 10).map((i) => ({
+          path: i.path.join("."),
+          message: i.message
+        }))
+      });
+    }
+
+    const fileData = fileResult.data;
+    const rawItems = Array.isArray(fileData) ? fileData : fileData.items;
+
+    // Fetch chapters for scope mapping
+    const chapters = repos.chapters.findByBookId(bookId);
+
+    const itemInputs: Parameters<typeof repos.smartSolveImports.createItems>[0] = [];
+    let validCount = 0;
+    let mappedCount = 0;
+    let unmappedCount = 0;
+    let invalidCount = 0;
+
+    for (const item of rawItems) {
+      const itemResult = (() => {
+        if (!item.prompt || item.prompt.trim() === "") {
+          return { ok: false, reason: "prompt is required" };
+        }
+        return { ok: true };
+      })();
+
+      if (!itemResult.ok) {
+        invalidCount++;
+        itemInputs.push({
+          jobId: "",
+          bookId,
+          prompt: item.prompt ?? "",
+          externalId: item.externalId ?? null,
+          title: item.title ?? null,
+          status: "invalid",
+          errorJson: JSON.stringify({ reason: itemResult.reason })
+        });
+        continue;
+      }
+
+      validCount++;
+
+      // Scope mapping: try chapterId, then chapterTitle, then page range
+      let itemStatus: "mapped" | "unmapped" = "unmapped";
+      const scope = item.scope;
+      if (scope && chapters.length > 0) {
+        const chapterById = scope.chapterId
+          ? chapters.find((c) => c.id === scope.chapterId)
+          : undefined;
+        const chapterByTitle =
+          !chapterById && scope.chapterTitle
+            ? chapters.find(
+                (c) => c.title.toLowerCase() === scope.chapterTitle!.toLowerCase()
+              )
+            : undefined;
+        const chapterByPage =
+          !chapterById && !chapterByTitle && scope.pageStart != null
+            ? chapters.find(
+                (c) =>
+                  c.pageStart != null &&
+                  c.pageEnd != null &&
+                  scope.pageStart! >= c.pageStart &&
+                  scope.pageStart! <= c.pageEnd
+              )
+            : undefined;
+
+        if (chapterById || chapterByTitle || chapterByPage) {
+          itemStatus = "mapped";
+          mappedCount++;
+        } else {
+          unmappedCount++;
+        }
+      } else if (scope) {
+        unmappedCount++;
+      } else {
+        unmappedCount++;
+      }
+
+      itemInputs.push({
+        jobId: "",
+        bookId,
+        externalId: item.externalId ?? null,
+        title: item.title ?? null,
+        prompt: item.prompt,
+        solution: item.solution ?? null,
+        explanation: item.explanation ?? null,
+        skill: item.skill ?? null,
+        difficulty: item.difficulty ?? null,
+        scopeJson: scope ? JSON.stringify(scope) : null,
+        tagsJson: item.tags ? JSON.stringify(item.tags) : null,
+        metadataJson: item.metadata ? JSON.stringify(item.metadata) : null,
+        status: itemStatus
+      });
+    }
+
+    const totalRecords = rawItems.length;
+    const resultSummary = {
+      totalRecords,
+      validRecords: validCount,
+      mappedRecords: mappedCount,
+      unmappedRecords: unmappedCount,
+      invalidRecords: invalidCount
+    };
+
+    const job = repos.smartSolveImports.createJob({
+      bookId,
+      fileName: file.originalname,
+      status: invalidCount === totalRecords ? "failed" : "done",
+      totalRecords,
+      validRecords: validCount,
+      mappedRecords: mappedCount,
+      unmappedRecords: unmappedCount,
+      invalidRecords: invalidCount,
+      resultJson: JSON.stringify(resultSummary)
+    });
+
+    // Insert items with jobId filled in
+    const itemsWithJobId = itemInputs.map((i) => ({ ...i, jobId: job.id }));
+    repos.smartSolveImports.createItems(itemsWithJobId);
+
+    return res.status(201).json({ job, summary: resultSummary });
+  }
+);
+
+app.get("/api/admin/books/:bookId/imports/smart-solve/jobs", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const jobs = repos.smartSolveImports.findJobsByBook(bookId, 20);
+  return res.json({ jobs });
+});
+
+app.get("/api/admin/books/:bookId/imports/smart-solve/jobs/:jobId", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const jobId = String(req.params.jobId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const job = repos.smartSolveImports.findJobById(jobId);
+  if (!job || job.bookId !== bookId) return fail(res, 404, "job not found");
+  const items = repos.smartSolveImports.findItemsByJob(jobId);
+  return res.json({ job, items });
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);

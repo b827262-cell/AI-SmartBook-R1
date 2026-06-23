@@ -153,7 +153,43 @@ const STATEMENTS = [
     result_json TEXT,
     error_message TEXT,
     created_at TEXT NOT NULL
-  )`
+  )`,
+  `CREATE TABLE IF NOT EXISTS smart_solve_import_jobs (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    total_records INTEGER NOT NULL DEFAULT 0,
+    valid_records INTEGER NOT NULL DEFAULT 0,
+    mapped_records INTEGER NOT NULL DEFAULT 0,
+    unmapped_records INTEGER NOT NULL DEFAULT 0,
+    invalid_records INTEGER NOT NULL DEFAULT 0,
+    result_json TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS smart_solve_import_items (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    book_id TEXT NOT NULL,
+    external_id TEXT,
+    title TEXT,
+    prompt TEXT NOT NULL,
+    solution TEXT,
+    explanation TEXT,
+    skill TEXT,
+    difficulty TEXT,
+    scope_json TEXT,
+    tags_json TEXT,
+    metadata_json TEXT,
+    status TEXT NOT NULL DEFAULT 'unmapped',
+    error_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ss_import_jobs_book ON smart_solve_import_jobs(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_ss_import_items_job ON smart_solve_import_items(job_id)`
 ];
 
 /**
