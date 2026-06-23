@@ -1932,6 +1932,26 @@ app.get("/api/student/books/:bookId/contents", (req, res) => {
   res.json({ contents: repos.contents.findByBookId(book.id) });
 });
 
+app.get("/api/student/question-bank/jobs", (_req, res) => {
+  res.json({ jobs: repos.questionBankImports.findRecent(10) });
+});
+
+app.get("/api/student/books/:bookId/smart-solve/jobs", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const jobs = repos.smartSolveImports.findJobsByBook(book.id, 10);
+  res.json({ jobs });
+});
+
+app.get("/api/student/books/:bookId/smart-solve/jobs/:jobId", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const job = repos.smartSolveImports.findJobById(String(req.params.jobId));
+  if (!job || job.bookId !== book.id) return fail(res, 404, "job not found");
+  const items = repos.smartSolveImports.findItemsByJob(job.id);
+  res.json({ job, items });
+});
+
 // ---- Smart Notes (text / ai_answer / canvas) -----------------------------
 // Notes are scoped to a published book and optionally to chapter/page context.
 app.get("/api/student/books/:bookId/notes", (req, res) => {

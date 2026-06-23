@@ -5,7 +5,10 @@ import type {
   BookContent,
   ChatMessage,
   CreateSmartBookNoteInput,
+  QuestionBankImportJob,
   ReaderOutlineResponse,
+  SmartSolveImportItem,
+  SmartSolveImportJob,
   SmartBookNote,
   UpdateSmartBookNoteInput
 } from "@ai-smartbook/schema";
@@ -25,6 +28,11 @@ export interface ChatResponse {
   model?: string;
   matchedQuestion?: string;
   messages: ChatMessage[];
+}
+
+export interface SmartSolveJobDetailResponse {
+  job: SmartSolveImportJob;
+  items: SmartSolveImportItem[];
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -91,6 +99,15 @@ export const studentClient = {
 
   getAppearanceSettings: () =>
     http<{ settings: AppearanceSettings }>("/api/appearance-settings"),
+
+  listQuestionBankJobs: () =>
+    http<{ jobs: QuestionBankImportJob[] }>("/api/student/question-bank/jobs"),
+
+  listSmartSolveJobs: (bookId: string) =>
+    http<{ jobs: SmartSolveImportJob[] }>(`/api/student/books/${bookId}/smart-solve/jobs`),
+
+  getSmartSolveJob: (bookId: string, jobId: string) =>
+    http<SmartSolveJobDetailResponse>(`/api/student/books/${bookId}/smart-solve/jobs/${jobId}`),
 
   // ---- Smart Notes -------------------------------------------------------
   listNotes: (bookId: string) =>

@@ -1032,6 +1032,100 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
 }
 .tab-placeholder-card h3 { margin: 0 0 8px; }
 
+.my-question-bank-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0 24px;
+}
+.my-question-bank-hero,
+.my-question-bank-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+.my-question-bank-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+}
+.my-question-bank-hero h3,
+.my-question-bank-card h4 {
+  margin: 0 0 8px;
+}
+.my-question-bank-badges,
+.my-question-bank-job-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.my-question-bank-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.my-question-bank-card {
+  padding: 18px;
+}
+.my-question-bank-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.my-question-bank-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.my-question-bank-select select {
+  width: 100%;
+}
+.my-question-bank-job-list,
+.my-question-bank-item-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.my-question-bank-job-list li,
+.my-question-bank-item-list li {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+.my-question-bank-job-title-row,
+.my-question-bank-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.my-question-bank-job-meta {
+  line-height: 1.6;
+}
+.my-question-bank-item-list p {
+  margin: 0 0 8px;
+  line-height: 1.6;
+}
+.my-question-bank-item-list details summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+}
+.my-question-bank-item-list details p {
+  margin-top: 8px;
+}
+
 @media (min-width: 769px) and (max-width: 1024px) {
   .reader-outer-layout {
     display: block;
@@ -1053,6 +1147,7 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-topbar { grid-template-columns: auto 1fr auto; }
   .reader-mini-meta strong { max-width: 160px; }
   .student-pdf-iframe { min-height: 480px; height: 60vh; }
+  .my-question-bank-grid { grid-template-columns: 1fr; }
   .student-pdf-watermark {
     grid-template-columns: 1fr;
     gap: 40px;
@@ -1153,6 +1248,14 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   .reader-layout-mobile .pdf-page-stack.has-snapshot {
     position: relative;
     width: 100%;
+  }
+  .my-question-bank-hero,
+  .my-question-bank-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .my-question-bank-grid {
+    grid-template-columns: 1fr;
   }
   .reader-layout-mobile .pdf-page-stack.has-snapshot .pdf-canvas-snapshot {
     position: fixed !important;
