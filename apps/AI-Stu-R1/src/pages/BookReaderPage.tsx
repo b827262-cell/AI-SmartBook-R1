@@ -20,7 +20,9 @@ import {
   RATIO_TOC_WIDTH,
   type ReaderRatio
 } from "../components/PdfReaderToolbar";
-import { ProtectedPdfViewer } from "../components/ProtectedPdfViewer";
+import { ProtectedPdfViewer, type ProtectedPdfViewerHandle } from "../components/ProtectedPdfViewer";
+import { ScreenshotSelectionOverlay } from "../components/ScreenshotSelectionOverlay";
+import { ScreenshotPreviewModal } from "../components/ScreenshotPreviewModal";
 import { ChatPanel } from "../components/ChatPanel";
 import { SmartNotesPanel } from "../components/SmartNotesPanel";
 import { TabPlaceholder } from "../components/TabPlaceholder";
@@ -283,6 +285,9 @@ export function BookReaderPage() {
     typeof window === "undefined" ? 1024 : window.innerWidth
   );
   const [mobilePanel, setMobilePanel] = useState<MobileReaderPanel | null>(null);
+  const [screenshotMode, setScreenshotMode] = useState(false);
+  const [screenshotImage, setScreenshotImage] = useState<string | null>(null);
+  const pdfViewerRef = useRef<ProtectedPdfViewerHandle>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const outerLayoutRef = useRef<HTMLDivElement>(null);
   const readerMainRef = useRef<HTMLDivElement>(null);
@@ -1051,6 +1056,11 @@ export function BookReaderPage() {
                 setSelectionMode((v) => !v);
                 setSelectedText("");
               }}
+              screenshotMode={screenshotMode}
+              onToggleScreenshot={() => {
+                setScreenshotMode((v) => !v);
+                setScreenshotImage(null);
+              }}
               aiOpen={isMobile ? isMobileChatOpen : rightPanel === "ai"}
               onToggleAi={() => {
                 if (isMobile) {
@@ -1157,6 +1167,7 @@ export function BookReaderPage() {
                     </div>
                   ) : pdfBlob ? (
                     <ProtectedPdfViewer
+                      ref={pdfViewerRef}
                       blob={pdfBlob}
                       page={pdfPage}
                       zoom={zoom}
@@ -1217,6 +1228,23 @@ export function BookReaderPage() {
                   {mobileNotice ? <div className="reader-mobile-toast">{mobileNotice}</div> : null}
                 </div>
               </section>
+
+              <ScreenshotSelectionOverlay
+                active={screenshotMode}
+                onCapture={(clientRect) => {
+                  const dataUrl = pdfViewerRef.current?.captureRegion(clientRect) ?? null;
+                  setScreenshotMode(false);
+                  setScreenshotImage(dataUrl);
+                }}
+                onCancel={() => setScreenshotMode(false)}
+              />
+
+              {screenshotImage && (
+                <ScreenshotPreviewModal
+                  imageDataUrl={screenshotImage}
+                  onClose={() => setScreenshotImage(null)}
+                />
+              )}
 
               {!isMobile && rightPanel !== null && (
                 <PaneSplitter onResize={resizeAi} label="調整 PDF 與右側面板寬度" />

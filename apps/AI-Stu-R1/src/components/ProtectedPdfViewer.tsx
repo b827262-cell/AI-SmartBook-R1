@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 // Vite resolves this to a hashed worker asset URL at build time.
@@ -17,6 +17,12 @@ function isAndroidMobile(): boolean {
   return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 }
 
+export interface ProtectedPdfViewerHandle {
+  /** Capture the rectangle described by client-coordinate DOMRect from the PDF canvas.
+   *  Returns a PNG data URL, or null if the canvas is unavailable or the region is empty. */
+  captureRegion(clientRect: DOMRect): string | null;
+}
+
 /**
  * Renders the protected PDF blob with PDF.js onto a <canvas>. Page navigation
  * and zoom are deterministic here (we choose which page to render and the
@@ -24,7 +30,20 @@ function isAndroidMobile(): boolean {
  * Chromium applies inconsistently. The protected blob never becomes a URL: we
  * read its bytes in-memory and hand them to PDF.js.
  */
-export function ProtectedPdfViewer({
+export const ProtectedPdfViewer = forwardRef<
+  ProtectedPdfViewerHandle,
+  {
+    blob: Blob;
+    page: number;
+    zoom: number;
+    watermarkText: string;
+    selectable?: boolean;
+    onPageCount?: (count: number) => void;
+    onError?: (message: string) => void;
+    onSelectedText?: (text: string) => void;
+    onPageHasText?: (hasText: boolean) => void;
+  }
+>(function ProtectedPdfViewer({
   blob,
   page,
   zoom,
@@ -34,17 +53,7 @@ export function ProtectedPdfViewer({
   onError,
   onSelectedText,
   onPageHasText
-}: {
-  blob: Blob;
-  page: number;
-  zoom: number;
-  watermarkText: string;
-  selectable?: boolean;
-  onPageCount?: (count: number) => void;
-  onError?: (message: string) => void;
-  onSelectedText?: (text: string) => void;
-  onPageHasText?: (hasText: boolean) => void;
-}) {
+}, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
@@ -241,6 +250,33 @@ export function ProtectedPdfViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, page, zoom, containerWidth]);
 
+  useImperativeHandle(ref, () => ({
+    captureRegion(clientRect: DOMRect): string | null {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+      const cr = canvas.getBoundingClientRect();
+      if (cr.width === 0 || cr.height === 0) return null;
+      const scaleX = canvas.width / cr.width;
+      const scaleY = canvas.height / cr.height;
+      const x = Math.round((clientRect.left - cr.left) * scaleX);
+      const y = Math.round((clientRect.top - cr.top) * scaleY);
+      const w = Math.round(clientRect.width * scaleX);
+      const h = Math.round(clientRect.height * scaleY);
+      const cx = Math.max(0, x);
+      const cy = Math.max(0, y);
+      const cw = Math.min(canvas.width - cx, w);
+      const ch = Math.min(canvas.height - cy, h);
+      if (cw <= 0 || ch <= 0) return null;
+      const tmp = document.createElement("canvas");
+      tmp.width = cw;
+      tmp.height = ch;
+      const ctx = tmp.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
+      return tmp.toDataURL("image/png");
+    }
+  }));
+
   // Report the current selection text when selection mode is active.
   function reportSelection() {
     if (!selectable) return;
@@ -292,4 +328,4 @@ export function ProtectedPdfViewer({
       </div>
     </div>
   );
-}
+});

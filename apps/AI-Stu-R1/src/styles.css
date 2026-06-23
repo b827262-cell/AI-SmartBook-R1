@@ -1464,3 +1464,92 @@ body.reader-mobile-overlay-open {
 body.reader-reading-mobile {
   overflow: hidden;
 }
+
+/* ── Screenshot Selection Overlay ──────────────────────────────────────── */
+.screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  cursor: crosshair;
+  user-select: none;
+  background: rgba(0, 0, 0, 0.08);
+}
+.screenshot-overlay-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.screenshot-selection-box {
+  position: fixed;
+  border: 2px solid #f97316;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+.screenshot-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 2px solid #f97316;
+  border-radius: 2px;
+}
+.screenshot-handle.tl { top: -6px; left: -6px; }
+.screenshot-handle.tr { top: -6px; right: -6px; }
+.screenshot-handle.bl { bottom: -6px; left: -6px; }
+.screenshot-handle.br { bottom: -6px; right: -6px; }
+
+/* ── Screenshot Preview Modal ───────────────────────────────────────────── */
+.screenshot-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.screenshot-preview-modal {
+  background: var(--panel, #fff);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  max-width: 720px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+.screenshot-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.screenshot-preview-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.screenshot-preview-image {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  display: block;
+}
+.screenshot-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 0;
+}

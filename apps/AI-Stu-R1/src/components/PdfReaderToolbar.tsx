@@ -38,6 +38,8 @@ export function PdfReaderToolbar({
   onToggleToc,
   selectionMode,
   onToggleSelection,
+  screenshotMode,
+  onToggleScreenshot,
   aiOpen,
   onToggleAi,
   notesOpen,
@@ -62,6 +64,8 @@ export function PdfReaderToolbar({
   onToggleToc: () => void;
   selectionMode: boolean;
   onToggleSelection: () => void;
+  screenshotMode: boolean;
+  onToggleScreenshot: () => void;
   aiOpen: boolean;
   onToggleAi: () => void;
   notesOpen: boolean;
@@ -191,6 +195,16 @@ export function PdfReaderToolbar({
         title="文字選取：拖曳選取 PDF 文字後可複製 / 加入筆記 / 問AI重點"
       >
         🔖 {selectionMode ? "結束選取" : "文字選取"}
+      </button>
+
+      <button
+        type="button"
+        className={`tool-btn ${screenshotMode ? "active" : ""}`}
+        onClick={onToggleScreenshot}
+        title="截圖問 AI：拖曳框選 PDF 區域並截圖"
+        disabled={!hasPdf}
+      >
+        📷 {screenshotMode ? "結束截圖" : "截圖問 AI"}
       </button>
 
       <button
