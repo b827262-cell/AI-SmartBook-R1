@@ -1,17 +1,33 @@
 import { useEffect, useRef, useState } from "react";
+import type { Book } from "@ai-smartbook/schema";
 import type { SmartSolveImportJob } from "@ai-smartbook/schema";
 import { adminApi } from "../api";
 import { AdminPageHeader } from "../components/admin/AdminPageHeader";
 import { AdminCard } from "../components/admin/AdminCard";
 import { AdminErrorCard } from "../components/admin/AdminErrorCard";
 
+const SAMPLE_JSON = `{
+  "items": [
+    {
+      "externalId": "ss-001",
+      "prompt": "Explain debit and credit.",
+      "solution": "Debit and credit are the two sides of accounting entries.",
+      "scope": { "chapterTitle": "第一章" },
+      "tags": ["accounting", "basic"]
+    }
+  ]
+}`;
+
 export function SmartSolveImportPage() {
+  const [books, setBooks] = useState<Book[]>([]);
+  const [booksError, setBooksError] = useState("");
   const [bookId, setBookId] = useState("");
   const [jobs, setJobs] = useState<SmartSolveImportJob[]>([]);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [actionError, setActionError] = useState("");
+  const [showSample, setShowSample] = useState(false);
   const [summary, setSummary] = useState<{
     totalRecords: number;
     validRecords: number;
@@ -21,38 +37,47 @@ export function SmartSolveImportPage() {
   } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    adminApi
+      .listBooks()
+      .then((r) => setBooks(r.books))
+      .catch((e) => setBooksError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
   function loadJobs(bid: string) {
-    if (!bid.trim()) return;
+    if (!bid) return;
     setLoadError("");
     adminApi
-      .listSmartSolveImportJobs(bid.trim())
+      .listSmartSolveImportJobs(bid)
       .then((r) => setJobs(r.jobs))
       .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
   }
 
-  useEffect(() => {
-    if (bookId.trim()) loadJobs(bookId.trim());
-  }, [bookId]);
+  function onBookChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const bid = e.target.value;
+    setBookId(bid);
+    setJobs([]);
+    setMsg("");
+    setSummary(null);
+    setActionError("");
+    if (bid) loadJobs(bid);
+  }
 
   async function onUpload() {
     const file = fileRef.current?.files?.[0];
-    if (!file) return;
-    if (!bookId.trim()) {
-      setActionError("請輸入 Book ID");
-      return;
-    }
+    if (!file || !bookId) return;
     setBusy(true);
     setActionError("");
     setMsg("");
     setSummary(null);
     try {
-      const r = await adminApi.importSmartSolveJson(bookId.trim(), file);
+      const r = await adminApi.importSmartSolveJson(bookId, file);
       setSummary(r.summary);
       setMsg(
         `匯入完成 (${r.job.status})：共 ${r.summary.totalRecords} 筆，有效 ${r.summary.validRecords}，已映射 ${r.summary.mappedRecords}，未映射 ${r.summary.unmappedRecords}，無效 ${r.summary.invalidRecords}`
       );
       if (fileRef.current) fileRef.current.value = "";
-      loadJobs(bookId.trim());
+      loadJobs(bookId);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -60,52 +85,118 @@ export function SmartSolveImportPage() {
     }
   }
 
+  const selectedBook = books.find((b) => b.id === bookId);
+
   return (
     <div style={{ padding: "1.5rem", maxWidth: 960 }}>
       <AdminPageHeader title="Smart Solve JSON Import" />
 
+      {booksError && <AdminErrorCard description={`書本載入失敗：${booksError}`} />}
       {loadError && <AdminErrorCard description={loadError} />}
 
       <AdminCard title="上傳設定">
-        <div style={{ marginBottom: "0.75rem" }}>
-          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600, fontSize: "0.9rem" }}>
-            Book ID（目標書籍）
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={{ display: "block", marginBottom: "0.35rem", fontWeight: 600, fontSize: "0.9rem" }}>
+            目標書本
           </label>
-          <input
-            type="text"
-            value={bookId}
-            onChange={(e) => setBookId(e.target.value)}
-            placeholder="book_xxxxx"
-            style={{ width: "100%", padding: "0.35rem 0.5rem", border: "1px solid #d1d5db", borderRadius: 4, fontSize: "0.875rem" }}
-          />
+          {books.length === 0 && !booksError ? (
+            <p style={{ color: "#888", fontSize: "0.9rem" }}>載入書本中…</p>
+          ) : (
+            <select
+              value={bookId}
+              onChange={onBookChange}
+              style={{
+                width: "100%",
+                padding: "0.4rem 0.6rem",
+                border: "1px solid #d1d5db",
+                borderRadius: 4,
+                fontSize: "0.9rem",
+                background: "#fff"
+              }}
+            >
+              <option value="">— 請選擇書本 —</option>
+              {books.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.title}（{b.id}）
+                </option>
+              ))}
+            </select>
+          )}
+          {selectedBook && (
+            <p style={{ marginTop: "0.3rem", fontSize: "0.8rem", color: "#6b7280" }}>
+              Book ID：<code>{selectedBook.id}</code>
+            </p>
+          )}
+          {!bookId && (
+            <p style={{ marginTop: "0.3rem", fontSize: "0.85rem", color: "#d97706" }}>
+              請先選擇書本才能上傳。
+            </p>
+          )}
         </div>
-        <p style={{ marginBottom: "0.75rem", fontSize: "0.9rem", color: "#555" }}>
-          支援格式：<code>{"[{prompt, solution, scope:{chapterId|chapterTitle|pageStart}, ...}]"}</code>{" "}
+
+        <div style={{ marginBottom: "0.75rem" }}>
+          <button
+            type="button"
+            onClick={() => setShowSample((v) => !v)}
+            style={{
+              fontSize: "0.8rem",
+              color: "#2563eb",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              textDecoration: "underline"
+            }}
+          >
+            {showSample ? "▲ 隱藏範例 JSON" : "▼ 查看範例 JSON"}
+          </button>
+          {showSample && (
+            <pre
+              style={{
+                marginTop: "0.5rem",
+                background: "#f1f5f9",
+                padding: "0.75rem",
+                borderRadius: 4,
+                fontSize: "0.8rem",
+                overflowX: "auto",
+                fontFamily: "monospace"
+              }}
+            >
+              {SAMPLE_JSON}
+            </pre>
+          )}
+        </div>
+
+        <p style={{ marginBottom: "0.75rem", fontSize: "0.85rem", color: "#555" }}>
+          支援格式：<code>{"[{prompt, solution, scope:{chapterTitle|chapterId|pageStart}, ...}]"}</code>{" "}
           或 <code>{"{ items: [...] }"}</code>，最大 10 MB。
         </p>
+
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <input
             ref={fileRef}
             type="file"
             accept=".json,application/json"
-            disabled={busy}
+            disabled={busy || !bookId}
             style={{ flex: 1 }}
           />
           <button
             onClick={onUpload}
-            disabled={busy}
+            disabled={busy || !bookId}
             style={{
               padding: "0.4rem 1rem",
-              background: busy ? "#aaa" : "#2563eb",
+              background: busy || !bookId ? "#aaa" : "#2563eb",
               color: "#fff",
               border: "none",
               borderRadius: 4,
-              cursor: busy ? "not-allowed" : "pointer"
+              cursor: busy || !bookId ? "not-allowed" : "pointer",
+              whiteSpace: "nowrap"
             }}
           >
             {busy ? "處理中..." : "驗證並匯入"}
           </button>
         </div>
+
         {msg && <p style={{ marginTop: "0.75rem", color: "#16a34a", fontWeight: 600 }}>{msg}</p>}
         {actionError && (
           <div style={{ marginTop: "0.5rem" }}>
@@ -136,8 +227,10 @@ export function SmartSolveImportPage() {
 
       <div style={{ marginTop: "1.25rem" }}>
         <AdminCard title="歷史匯入紀錄">
-          {jobs.length === 0 ? (
-            <p style={{ color: "#888" }}>{bookId ? "尚無匯入紀錄。" : "請先輸入 Book ID。"}</p>
+          {!bookId ? (
+            <p style={{ color: "#888" }}>請先選擇書本以顯示匯入紀錄。</p>
+          ) : jobs.length === 0 ? (
+            <p style={{ color: "#888" }}>此書本尚無匯入紀錄。</p>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
               <thead>

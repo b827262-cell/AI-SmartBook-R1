@@ -1,13 +1,12 @@
 import { NavLink } from "react-router-dom";
 import { useAppearance } from "../../appearance";
+import { ADMIN_NAV_GROUPS } from "../../navigation/adminNav";
 
 const NAV_CLASS = ({ isActive }: { isActive: boolean }) =>
   `admin-nav-item ${isActive ? "active" : ""}`;
 
-/**
- * Left navigation, scoped to 智能書本管理. The dashboard label is configurable
- * via appearance settings (e.g. 首頁 → 智能中控).
- */
+const DISABLED_CLASS = "admin-nav-item admin-nav-item--disabled";
+
 export function AdminSidebar({
   open,
   onNavigate
@@ -19,28 +18,44 @@ export function AdminSidebar({
 
   return (
     <aside className={`admin-sidebar ${open ? "open" : ""}`}>
-      <p className="admin-nav-group">管理後台</p>
-      <nav onClick={onNavigate}>
-        <NavLink end to="/admin" className={NAV_CLASS}>
-          {settings.dashboardNavLabel || "首頁"}
-        </NavLink>
-        <NavLink end to="/admin/accounts" className={NAV_CLASS}>
-          帳戶管理
-        </NavLink>
-        <NavLink end to="/admin/appearance" className={NAV_CLASS}>
-          介面設定
-        </NavLink>
-      </nav>
+      {ADMIN_NAV_GROUPS.map((group) => (
+        <div key={group.label}>
+          <p className="admin-nav-group">{group.label}</p>
+          <nav onClick={onNavigate}>
+            {group.items.map((item) => {
+              const label =
+                item.to === "/admin" && settings.dashboardNavLabel
+                  ? settings.dashboardNavLabel
+                  : item.label;
 
-      <p className="admin-nav-subgroup">智能書本管理</p>
-      <nav onClick={onNavigate}>
-        <NavLink end to="/admin/books" className={NAV_CLASS}>
-          書本列表
-        </NavLink>
-        <NavLink end to="/admin/books/new" className={NAV_CLASS}>
-          新增書本
-        </NavLink>
-      </nav>
+              if (item.enabled === false) {
+                return (
+                  <span
+                    key={item.to}
+                    className={DISABLED_CLASS}
+                    title={item.description || "尚未實作"}
+                  >
+                    {label}
+                    <span className="admin-nav-badge">待實作</span>
+                  </span>
+                );
+              }
+
+              return (
+                <NavLink
+                  key={item.to}
+                  end={item.end}
+                  to={item.to}
+                  className={NAV_CLASS}
+                  title={item.description}
+                >
+                  {label}
+                </NavLink>
+              );
+            })}
+          </nav>
+        </div>
+      ))}
     </aside>
   );
 }

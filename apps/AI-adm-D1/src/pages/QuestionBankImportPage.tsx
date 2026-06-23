@@ -5,7 +5,17 @@ import { AdminPageHeader } from "../components/admin/AdminPageHeader";
 import { AdminCard } from "../components/admin/AdminCard";
 import { AdminErrorCard } from "../components/admin/AdminErrorCard";
 
+const SAMPLE_JSON = `[
+  {
+    "question_number": 1,
+    "question": "下列何者為會計恆等式？",
+    "options": ["資產=負債+權益", "資產=收入+費用"],
+    "answer": "資產=負債+權益"
+  }
+]`;
+
 export function QuestionBankImportPage() {
+  const [showSample, setShowSample] = useState(false);
   const [jobs, setJobs] = useState<QuestionBankImportJob[]>([]);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -55,10 +65,43 @@ export function QuestionBankImportPage() {
       {loadError && <AdminErrorCard description={loadError} />}
 
       <AdminCard title="上傳題庫 JSON">
-        <p style={{ marginBottom: "0.75rem", fontSize: "0.9rem", color: "#555" }}>
-          支援格式：<code>{"[{question, options, answer, ...}, ...]"}</code> 或{" "}
+        <p style={{ marginBottom: "0.5rem", fontSize: "0.9rem", color: "#555" }}>
+          支援格式：<code>{"[{question_number, question, options, answer, ...}, ...]"}</code> 或{" "}
           <code>{"{ questions: [...] }"}</code>，最大 5 MB。
+          匯入後建立 staging 記錄，不直接寫入正式題庫資料表。
         </p>
+        <div style={{ marginBottom: "0.75rem" }}>
+          <button
+            type="button"
+            onClick={() => setShowSample((v) => !v)}
+            style={{
+              fontSize: "0.8rem",
+              color: "#2563eb",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              textDecoration: "underline"
+            }}
+          >
+            {showSample ? "▲ 隱藏範例 JSON" : "▼ 查看範例 JSON"}
+          </button>
+          {showSample && (
+            <pre
+              style={{
+                marginTop: "0.5rem",
+                background: "#f1f5f9",
+                padding: "0.75rem",
+                borderRadius: 4,
+                fontSize: "0.8rem",
+                overflowX: "auto",
+                fontFamily: "monospace"
+              }}
+            >
+              {SAMPLE_JSON}
+            </pre>
+          )}
+        </div>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <input
             ref={fileRef}

@@ -344,6 +344,11 @@ export function SmartNotesPanel({
 
       <div className="notes-list">
         <h4>我的筆記（{notes.length}）</h4>
+        {onNavigate && (
+          <p className="muted" style={{ fontSize: "0.78rem", marginBottom: "0.5rem" }}>
+            點「定位」可跳到筆記頁碼；沒有頁碼的筆記會顯示提示。
+          </p>
+        )}
         {error ? <p className="error-text">{error}</p> : null}
         {loading ? (
           <p className="muted">載入中…</p>

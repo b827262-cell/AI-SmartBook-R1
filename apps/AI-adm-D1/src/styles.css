@@ -143,6 +143,9 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 }
 .admin-nav-item:hover { background: #eef3fb; text-decoration: none; }
 .admin-nav-item.active { background: var(--primary); color: #fff; }
+.admin-nav-item--disabled { color: #b0b8c1; cursor: default; display: flex; align-items: center; justify-content: space-between; }
+.admin-nav-item--disabled:hover { background: none; }
+.admin-nav-badge { font-size: 10px; padding: 1px 6px; border-radius: 9px; background: #e5e7eb; color: #6b7280; margin-left: 6px; }
 .admin-overlay { position: fixed; inset: 60px 0 0; background: rgba(0, 0, 0, 0.28); z-index: 30; }
 .admin-content { flex: 1; padding: 24px 28px; max-width: 1160px; width: 100%; }
 
