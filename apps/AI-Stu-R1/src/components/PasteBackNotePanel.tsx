@@ -13,7 +13,7 @@ const PASTE_BACK_PROVIDERS: AiProviderLink[] = [
   { name: "Grok", url: "https://grok.x.ai/" },
   { name: "Copilot", url: "https://copilot.microsoft.com/" },
   { name: "Meta AI", url: "https://www.meta.ai/" },
-  { name: "Google 搜尋", url: "https://www.google.com/" },
+  { name: "Google AI", url: "https://google.com/ai" },
   { name: "其他", url: "" }
 ];
 
