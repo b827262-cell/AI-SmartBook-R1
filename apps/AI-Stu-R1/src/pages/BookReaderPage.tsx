@@ -288,7 +288,7 @@ export function BookReaderPage() {
   const readerMainRef = useRef<HTMLDivElement>(null);
   const actionBarRef = useRef<HTMLDivElement>(null);
   const pageJumpInputRef = useRef<HTMLInputElement>(null);
-  const touchZoneRef = useRef<HTMLElement>(null);
+  const touchZoneRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const mobileNoticeTimerRef = useRef<number | null>(null);
   const isMobile = viewportWidth <= 768;
@@ -349,16 +349,18 @@ export function BookReaderPage() {
       }
       return;
     }
-    const vv = window.visualViewport;
-    if (!vv) {
-      root.style.setProperty("--reader-keyboard-bottom", "0px");
-      root.style.setProperty("--reader-visual-height", `${window.innerHeight}px`);
+    const safeRoot = root;
+    const visualViewport = window.visualViewport;
+    if (!visualViewport) {
+      safeRoot.style.setProperty("--reader-keyboard-bottom", "0px");
+      safeRoot.style.setProperty("--reader-visual-height", `${window.innerHeight}px`);
       return;
     }
+    const vv = visualViewport;
     function updateKeyboardMetrics() {
       const keyboardBottom = Math.max(0, Math.round(window.innerHeight - vv.height));
-      root.style.setProperty("--reader-keyboard-bottom", `${keyboardBottom}px`);
-      root.style.setProperty("--reader-visual-height", `${Math.round(vv.height)}px`);
+      safeRoot.style.setProperty("--reader-keyboard-bottom", `${keyboardBottom}px`);
+      safeRoot.style.setProperty("--reader-visual-height", `${Math.round(vv.height)}px`);
     }
     updateKeyboardMetrics();
     vv.addEventListener("resize", updateKeyboardMetrics);
@@ -766,7 +768,7 @@ export function BookReaderPage() {
   }
 
   function toggleMobilePageJumpBar() {
-    if (!book.pdfFileId) return;
+    if (!book?.pdfFileId) return;
     setShowPageJumpBar((current) => !current);
     setShowMobileControls(true);
   }
@@ -846,8 +848,14 @@ export function BookReaderPage() {
   }
 
   function onPdfTouchZonePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (!isMobile || !book.pdfFileId) return;
-    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    if (!isMobile || !book?.pdfFileId) return;
+    if (
+      event.pointerType !== "touch" &&
+      event.pointerType !== "pen" &&
+      event.pointerType !== "mouse"
+    ) {
+      return;
+    }
     const target = event.target;
     if (!(target instanceof Element)) return;
     const activeElement = document.activeElement;
@@ -878,7 +886,7 @@ export function BookReaderPage() {
     const start = touchStartRef.current;
     touchStartRef.current = null;
 
-    if (!isMobile || !zone || !start || !book.pdfFileId) return;
+    if (!isMobile || !zone || !start || !book?.pdfFileId) return;
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
     if (performance.now() - start.t > MOBILE_TOUCH_TAP_DURATION) return;
     const diffX = Math.abs(event.clientX - start.x);
