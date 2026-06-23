@@ -2564,29 +2564,6 @@ app.get("/api/admin/books/:bookId/imports/smart-solve/jobs/:jobId", (req, res) =
   return res.json({ job, items });
 });
 
-// ---- Admin Notes Management -----------------------------------------------
-
-app.get("/api/admin/notes", (req, res) => {
-  const bookId = req.query.bookId ? String(req.query.bookId) : null;
-  const notes = bookId ? repos.notes.findByBookId(bookId) : repos.notes.findAll();
-  return res.json({ notes });
-});
-
-app.get("/api/admin/books/:bookId/notes", (req, res) => {
-  const book = repos.books.findById(String(req.params.bookId));
-  if (!book) return fail(res, 404, "book not found");
-  return res.json({ notes: repos.notes.findByBookId(book.id) });
-});
-
-app.delete("/api/admin/books/:bookId/notes/:noteId", (req, res) => {
-  const book = repos.books.findById(String(req.params.bookId));
-  if (!book) return fail(res, 404, "book not found");
-  const note = repos.notes.findById(String(req.params.noteId));
-  if (!note || note.bookId !== book.id) return fail(res, 404, "note not found");
-  repos.notes.delete(note.id);
-  return res.json({ deleted: true });
-});
-
 const port = Number(process.env.ADMIN_API_PORT || 4300);
 app.listen(port, () => {
   console.log(
