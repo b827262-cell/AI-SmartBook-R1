@@ -1034,6 +1034,16 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   color: #166534;
 }
 
+.external-ai-image-area {
+  margin: 6px 0 14px;
+}
+
+.external-ai-image-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .external-ai-providers {
   display: flex;
   gap: 8px;
@@ -1068,6 +1078,10 @@ body.reader-resizing { cursor: col-resize; user-select: none; }
   border: 1px solid var(--border);
   border-radius: 10px;
   margin-top: 8px;
+}
+
+.external-ai-upload-input {
+  display: none;
 }
 
 /* Tab placeholder */
