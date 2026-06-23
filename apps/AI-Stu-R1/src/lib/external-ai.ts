@@ -204,7 +204,7 @@ export async function copyPrompt(prompt: string): Promise<boolean> {
 }
 
 function isBlobLikeImage(value: Blob | string | null | undefined): value is Blob {
-  return Boolean(value instanceof Blob || value instanceof File);
+  return value != null && (value instanceof Blob || (value as unknown) instanceof File);
 }
 
 async function blobFromImageSource(image: string | Blob | File): Promise<Blob> {

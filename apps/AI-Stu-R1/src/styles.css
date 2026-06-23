@@ -1568,3 +1568,162 @@ body.reader-mobile-overlay-open {
 body.reader-reading-mobile {
   overflow: hidden;
 }
+
+/* ---- Four Reader Actions: toolbar divider -------------------------------- */
+.tool-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.reader-action-btn {
+  white-space: nowrap;
+}
+
+/* ---- 遮答案 mask layer --------------------------------------------------- */
+.answer-mask-block {
+  position: absolute;
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+  pointer-events: none;
+  z-index: 30;
+  border-radius: 2px;
+}
+.answer-mask-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  cursor: crosshair;
+  background: rgba(255,165,0,0.04);
+}
+.answer-mask-drawing {
+  position: absolute;
+  background: rgba(255,165,0,0.15);
+  border: 2px dashed #f97316;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.answer-mask-controls {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  pointer-events: auto;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+.answer-mask-hint { color: var(--muted); }
+.answer-mask-clear-btn {
+  background: none;
+  border: 1px solid #f87171;
+  color: #ef4444;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.answer-mask-clear-btn:hover { background: #fef2f2; }
+
+/* ---- 貼回AI筆記 modal --------------------------------------------------- */
+.paste-back-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.paste-back-modal {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  padding: 24px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.paste-back-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.paste-back-header h3 { margin: 0; font-size: 16px; }
+.paste-back-desc { font-size: 13px; line-height: 1.5; margin: 0; }
+.paste-back-ctx { font-size: 12px; margin: 0; }
+.paste-back-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.paste-back-provider-btn {
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.paste-back-provider-btn:hover { border-color: var(--primary); color: var(--primary); }
+.paste-back-provider-btn:disabled { opacity: 0.4; cursor: default; }
+.paste-back-fields { display: flex; flex-direction: column; gap: 8px; }
+.paste-back-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.paste-back-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: #fff;
+}
+.paste-back-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: #fff;
+  resize: vertical;
+  min-height: 140px;
+}
+.paste-back-status { font-size: 13px; color: #16a34a; }
+.paste-back-actions { display: flex; gap: 8px; }
+.btn-secondary {
+  background: var(--panel-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--primary); color: var(--primary); }

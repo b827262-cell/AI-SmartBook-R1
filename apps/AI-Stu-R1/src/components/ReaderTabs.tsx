@@ -1,9 +1,8 @@
 export type ReaderTabKey =
   | "smart-book"
-  | "smart-video"
-  | "smart-quiz"
   | "smart-note"
-  | "smart-manuscript";
+  | "smart-manuscript"
+  | "my-question-bank";
 
 export interface ReaderTab {
   key: ReaderTabKey;
@@ -12,10 +11,9 @@ export interface ReaderTab {
 
 export const READER_TABS: ReaderTab[] = [
   { key: "smart-book", label: "智能書本" },
-  { key: "smart-video", label: "智能影音" },
-  { key: "smart-quiz", label: "智能練題" },
   { key: "smart-note", label: "智能筆記" },
-  { key: "smart-manuscript", label: "智能手稿" }
+  { key: "smart-manuscript", label: "智能手稿" },
+  { key: "my-question-bank", label: "我的題庫" }
 ];
 
 /** Second-level feature tabs with a blue active underline. */

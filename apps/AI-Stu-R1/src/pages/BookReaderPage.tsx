@@ -24,6 +24,10 @@ import { ProtectedPdfViewer } from "../components/ProtectedPdfViewer";
 import { ChatPanel } from "../components/ChatPanel";
 import { SmartNotesPanel } from "../components/SmartNotesPanel";
 import { TabPlaceholder } from "../components/TabPlaceholder";
+import { StickyNoteModal } from "../components/StickyNoteModal";
+import { ExternalAiAskModal } from "../components/ExternalAiAskModal";
+import { PasteBackNotePanel } from "../components/PasteBackNotePanel";
+import { AnswerMaskLayer, type MaskRect } from "../components/AnswerMaskLayer";
 
 const QUICK_PROMPTS = [
   "整理這頁重點",
@@ -279,6 +283,12 @@ export function BookReaderPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const [watermarkStamp, setWatermarkStamp] = useState("");
+  // ---- Four reader action states ------------------------------------------
+  const [showStickyNote, setShowStickyNote] = useState(false);
+  const [showPasteBack, setShowPasteBack] = useState(false);
+  const [showScreenshotAsk, setShowScreenshotAsk] = useState(false);
+  const [maskMode, setMaskMode] = useState(false);
+  const [masks, setMasks] = useState<Record<number, MaskRect[]>>({});
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1024 : window.innerWidth
   );
@@ -1000,6 +1010,27 @@ export function BookReaderPage() {
     revealAiPanelWithPrefill(null);
   }
 
+  // ---- Four reader action handlers ----------------------------------------
+  function handleAddMask(page: number, rect: MaskRect) {
+    setMasks((prev) => ({ ...prev, [page]: [...(prev[page] ?? []), rect] }));
+  }
+
+  function handleClearPageMasks(page: number) {
+    setMasks((prev) => { const next = { ...prev }; delete next[page]; return next; });
+  }
+
+  async function handlePasteBackSave(title: string, content: string) {
+    if (!book) return;
+    await studentClient.createNote(bookId, {
+      type: "ai_answer",
+      title: title.slice(0, 80),
+      content,
+      chapterId: safeActiveChapter,
+      pageNumber: book.pdfFileId ? pdfPage : null
+    });
+    setNotesRefreshKey((k) => k + 1);
+  }
+
   return (
     <div
       ref={outerLayoutRef}
@@ -1077,6 +1108,11 @@ export function BookReaderPage() {
               onPrevPage={prevPage}
               onNextPage={nextPage}
               onAskAi={scrollToChat}
+              onStickyNote={() => setShowStickyNote(true)}
+              onPasteBackNote={() => setShowPasteBack(true)}
+              onScreenshotAsk={() => setShowScreenshotAsk(true)}
+              maskMode={maskMode}
+              onToggleMask={() => setMaskMode((v) => !v)}
             />
 
             {selectionMode && (
@@ -1172,6 +1208,15 @@ export function BookReaderPage() {
                       <p className="muted">Protected PDF preview is not ready.</p>
                     </div>
                   )}
+                  {(maskMode || Object.values(masks).some((arr) => arr.length > 0)) && (
+                    <AnswerMaskLayer
+                      page={pdfPage}
+                      masks={masks}
+                      onAddMask={handleAddMask}
+                      onClearPageMasks={handleClearPageMasks}
+                    />
+                  )}
+
                   {showPageJumpBar ? (
                     <div className="reader-page-jump-bar" onPointerDown={(event) => event.stopPropagation()}>
                       <button
@@ -1353,6 +1398,36 @@ export function BookReaderPage() {
         label="調整右側空白與閱讀器寬度"
       />
       <div className="reader-outer-gutter right" aria-hidden="true" />
+
+      {showStickyNote && (
+        <StickyNoteModal
+          bookTitle={book.title}
+          page={pdfPage}
+          chapterTitle={activeChapterTitle}
+          onClose={() => setShowStickyNote(false)}
+        />
+      )}
+
+      {showScreenshotAsk && (
+        <ExternalAiAskModal
+          isOpen={showScreenshotAsk}
+          bookTitle={book.title}
+          pageLabel={book.pdfFileId ? `P${pdfPage}` : undefined}
+          selectedText={selectedText || undefined}
+          onClose={() => setShowScreenshotAsk(false)}
+        />
+      )}
+
+      {showPasteBack && (
+        <PasteBackNotePanel
+          bookTitle={book.title}
+          pageLabel={book.pdfFileId ? `P${pdfPage}` : null}
+          chapterTitle={activeChapterTitle}
+          onSave={handlePasteBackSave}
+          onClose={() => setShowPasteBack(false)}
+        />
+      )}
+
       {isMobile ? (
         <div
           className={`reader-mobile-action-bar ${showMobileControls ? "" : "is-hidden"}`.trim()}

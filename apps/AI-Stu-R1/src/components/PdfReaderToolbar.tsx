@@ -51,7 +51,12 @@ export function PdfReaderToolbar({
   onJumpPage,
   onPrevPage,
   onNextPage,
-  onAskAi
+  onAskAi,
+  onStickyNote,
+  onPasteBackNote,
+  onScreenshotAsk,
+  maskMode,
+  onToggleMask
 }: {
   outlineNodes: ReaderOutlineNode[];
   activeNodeId: string | null;
@@ -76,6 +81,11 @@ export function PdfReaderToolbar({
   onPrevPage: () => void;
   onNextPage: () => void;
   onAskAi: () => void;
+  onStickyNote: () => void;
+  onPasteBackNote: () => void;
+  onScreenshotAsk: () => void;
+  maskMode: boolean;
+  onToggleMask: () => void;
 }) {
   const hasPdf = page != null;
   const atFirst = page == null || page <= 1;
@@ -200,6 +210,44 @@ export function PdfReaderToolbar({
         title="智能筆記"
       >
         📝 {notesOpen ? "收合筆記" : "智能筆記"}
+      </button>
+
+      <span className="tool-divider" aria-hidden="true" />
+
+      <button
+        type="button"
+        className="tool-btn reader-action-btn"
+        onClick={onStickyNote}
+        title="貼圖筆記：開啟筆記畫板，記錄此頁筆記"
+      >
+        📌 貼圖筆記
+      </button>
+
+      <button
+        type="button"
+        className="tool-btn reader-action-btn"
+        onClick={onPasteBackNote}
+        title="貼回AI筆記：開啟外部 AI 平台後，將 AI 回答貼回此筆記欄"
+      >
+        🤖 貼回AI筆記
+      </button>
+
+      <button
+        type="button"
+        className="tool-btn reader-action-btn"
+        onClick={onScreenshotAsk}
+        title="截圖問AI：選取 PDF 區域截圖後，手動複製提示詞問 AI"
+      >
+        📷 截圖問AI
+      </button>
+
+      <button
+        type="button"
+        className={`tool-btn reader-action-btn ${maskMode ? "active" : ""}`}
+        onClick={onToggleMask}
+        title="遮答案：拖曳選取區域，覆蓋白色方塊遮住答案"
+      >
+        🙈 {maskMode ? "結束遮答案" : "遮答案"}
       </button>
 
       <span className="tool-spacer" />
