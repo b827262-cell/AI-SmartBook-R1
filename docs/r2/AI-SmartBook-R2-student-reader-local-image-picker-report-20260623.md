@@ -2,7 +2,8 @@
 
 - 日期：2026-06-23
 - 分支：`fix/r2-student-reader-local-image-picker`
-- HEAD（產出後）：待填寫
+- Commit: e6b7541c
+- Push: 已推至 origin fix/r2-student-reader-local-image-picker
 
 ## 狀態
 
