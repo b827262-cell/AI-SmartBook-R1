@@ -26,6 +26,13 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { label: "書本列表", to: "/admin/books", end: true, enabled: true },
       { label: "新增書本", to: "/admin/books/new", end: true, enabled: true },
       {
+        label: "AI 筆記管理",
+        to: "/admin/notes",
+        end: true,
+        enabled: true,
+        description: "查看與管理學生筆記"
+      },
+      {
         label: "AI 筆記導覽說明",
         to: "/admin/notes-help",
         end: true,

@@ -48,6 +48,7 @@ import {
   questionBankJsonFileSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
+  type Book,
   type BookFile,
   type BookAiJob,
   type ChapterPreviewRow,
@@ -58,6 +59,7 @@ import {
   type PdfJsonIndex,
   type StoredJsonIndexSummary,
   type QuestionBankImportJob,
+  type SmartBookNote,
   smartSolveJsonFileSchema
 } from "@ai-smartbook/schema";
 
@@ -915,6 +917,14 @@ function findPublishedBook(bookId: string) {
   const book = repos.books.findById(bookId);
   if (!book || book.status !== "published") return null;
   return book;
+}
+
+function toAdminNote(note: SmartBookNote, book: Book | null) {
+  return {
+    ...note,
+    bookTitle: book?.title ?? "未知書本",
+    bookStatus: book?.status ?? "draft"
+  };
 }
 
 function findPrimaryPdfSourceFile(bookId: string): BookFile | null {
@@ -1803,6 +1813,32 @@ app.get("/api/admin/books/:bookId/ai-jobs", (req, res) => {
 
 app.get("/api/admin/books/:bookId/qa-logs", (req, res) => {
   res.json({ logs: repos.qaLogs.findByBookId(req.params.bookId) });
+});
+
+app.get("/api/admin/notes", (_req, res) => {
+  const books = repos.books.findAll();
+  const bookMap = new Map(books.map((book) => [book.id, book]));
+  const notes = repos.notes
+    .findAll()
+    .map((note) => toAdminNote(note, bookMap.get(note.bookId) ?? null));
+  res.json({ notes });
+});
+
+app.get("/api/admin/books/:bookId/notes", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  res.json({
+    notes: repos.notes.findByBookId(book.id).map((note) => toAdminNote(note, book))
+  });
+});
+
+app.delete("/api/admin/books/:bookId/notes/:noteId", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const note = repos.notes.findById(String(req.params.noteId));
+  if (!note || note.bookId !== book.id) return fail(res, 404, "note not found");
+  repos.notes.delete(note.id);
+  res.json({ deleted: true });
 });
 
 // ---- Student read-only API -----------------------------------------------

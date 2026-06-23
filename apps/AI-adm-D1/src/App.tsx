@@ -12,6 +12,7 @@ import { QaPage } from "./pages/QaPage";
 import { QuestionBankImportPage } from "./pages/QuestionBankImportPage";
 import { SmartSolveImportPage } from "./pages/SmartSolveImportPage";
 import { NotesHelpPage } from "./pages/NotesHelpPage";
+import { AdminNotesPage } from "./pages/AdminNotesPage";
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
             <Route path="/admin/appearance" element={<AppearanceSettingsPage />} />
             <Route path="/admin/import/question-bank" element={<QuestionBankImportPage />} />
             <Route path="/admin/import/smart-solve" element={<SmartSolveImportPage />} />
+            <Route path="/admin/notes" element={<AdminNotesPage />} />
             <Route path="/admin/notes-help" element={<NotesHelpPage />} />
             <Route path="/admin/books" element={<BooksPage />} />
             <Route path="/admin/books/new" element={<NewBookPage />} />

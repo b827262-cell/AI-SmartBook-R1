@@ -20,7 +20,8 @@ import type {
   QuestionBankImportJob,
   QuestionBankImportResult,
   SmartSolveImportJob,
-  SmartSolveImportItem
+  SmartSolveImportItem,
+  SmartBookNote
 } from "@ai-smartbook/schema";
 
 export interface ChapterInput {
@@ -76,6 +77,19 @@ export interface UploadBookFileOptions {
 
 export const adminApi = {
   listBooks: () => http<{ books: Book[] }>("/api/admin/books"),
+
+  listNotes: (bookId?: string) =>
+    http<{ notes: SmartBookNote[] }>(
+      `/api/admin/notes${bookId ? `?bookId=${encodeURIComponent(bookId)}` : ""}`
+    ),
+
+  listNotesByBook: (bookId: string) =>
+    http<{ notes: SmartBookNote[] }>(`/api/admin/books/${bookId}/notes`),
+
+  deleteNote: (bookId: string, noteId: string) =>
+    http<{ deleted: boolean }>(`/api/admin/books/${bookId}/notes/${noteId}`, {
+      method: "DELETE"
+    }),
 
   createBook: (input: CreateBookInput) =>
     http<{ book: Book }>("/api/admin/books", {
@@ -365,7 +379,8 @@ export const adminApi = {
   getSmartSolveImportJob: (bookId: string, jobId: string) =>
     http<{ job: SmartSolveImportJob; items: SmartSolveImportItem[] }>(
       `/api/admin/books/${bookId}/imports/smart-solve/jobs/${jobId}`
-    )
+    ),
+
 };
 
 export type DashboardRange = "week" | "month" | "all";
@@ -411,4 +426,9 @@ export interface StudentQuestion {
   subject: string;
   content: string;
   createdAt: string;
+}
+
+export interface AdminSmartBookNote extends SmartBookNote {
+  bookTitle?: string;
+  bookStatus?: Book["status"];
 }
