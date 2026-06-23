@@ -1,738 +1,427 @@
-# AI-SmartBook-R2 四 Agent 正式分工任務書
+# AI-SmartBook-R2 Four-Agent Formal Dispatch
 
 日期：2026-06-23
 
-## 1. 目的
-
-本文件整理 AI-SmartBook-R2 目前最新狀態，並正式分配後續四個 Agent 的任務範圍：
-
-| Agent | 指定模型 | 任務定位 |
-|---|---|---|
-| Agent A | codex-5.3-Spark 128K | 修 `pnpm build`、DB build error、`BookReaderPage.tsx` TypeScript |
-| Agent B | GPT-5.4 Medium / High | 前台六大模組盤點與移植策略 |
-| Agent C | Claude Sonnet 4.6 Medium / High | 管理後台盤點與架構建議 |
-| Agent D | AGY / Gemini 3.1 Pro High | UX、外觀、底圖、圖片素材、CSS、RWD、截圖驗收 |
-
-本文件可作為後續開新 worktree、分支、交辦任務與驗收的統一依據。
+分支：`feat/r2-integrate-imports-notes`  
+追蹤 Commit SHA：`32fd11eeadce3d00120ebd07fd6fc88d96f324e1`
 
 ---
 
-## 2. 目前最新狀態摘要
+## 1. 文件目的
 
-### 2.1 R2 主整合分支
+本文件用於正式分派 AI-SmartBook-R2 下一輪多 Agent 工作，其中 **Agent B** 負責：
 
-```text
-feat/r2-integrate-imports-notes
-```
+> 前台六大模組盤點與移植策略：智能書本、影音、題庫、筆記、手稿、我的題庫
 
-目前已完成：
-
-```text
-1. Question Bank JSON Import 整合
-2. Smart Solve JSON Import 整合
-3. AI Notes Navigation 整合
-4. Admin sidebar 模組化
-5. Smart Solve 書本下拉選單
-6. Question Bank / Smart Solve API 404 修正
-7. E500 live acceptance 驗收
-8. Post-merge E500 acceptance 驗收
-```
-
-### 2.2 AGY 最新回報
-
-```text
-報告檔案：docs/r2/AI-SmartBook-R2-post-merge-e500-acceptance-report-20260623.md
-Commit SHA：8e340927
-分支：feat/r2-integrate-imports-notes
-Push：成功
-```
-
-內容涵蓋：
-
-```text
-1. Post-merge E500 live acceptance
-2. R2 服務重啟
-3. curl 驗證
-4. browser/manual 驗證
-5. stale server 確認
-6. Vite JSX parse overlay 確認
-```
-
-### 2.3 Claude Sonnet 最新回報
-
-```text
-報告檔案：docs/r2/AI-SmartBook-R2-admin-notes-management-termination-report-20260623.md
-Commit SHA：92665e70
-分支：feat/r2-admin-notes-management
-Push：成功
-```
-
-內容涵蓋：
-
-```text
-1. worktree 切換問題與解法
-2. linter 自動介入處理
-3. 7 個修改檔案清單
-4. 3 個新增 API
-5. Admin Notes Management 頁面功能
-6. 驗證結果
-7. 安全性確認
-8. 後續建議
-```
-
-### 2.4 Codex 最新回報
-
-```text
-報告檔案：.claude/worktrees/r2-admin-notes-management/docs/r2/AI-SmartBook-R2-admin-notes-management-session-upload-report-20260623.md
-最新 Commit SHA：57b8d4df
-分支：feat/r2-admin-notes-management
-Push：成功
-```
-
-內容涵蓋：
-
-```text
-1. 本次續作
-2. 重複 route 清理
-3. typecheck/build
-4. 臨時埠 runtime 驗證
-5. 上傳結果
-6. worktree clean
-```
-
-重要注意：
-
-```text
-.claude/worktrees/... 為本地 worktree 路徑。
-若該報告檔已被提交到 GitHub，後續應確認實際 repository path 是否也位於 docs/r2/。
-不得提交 .claude 本地狀態或 agent runtime 資料。
-```
+本任務是**盤點 + 遷移規劃任務**，不是直接把六大模組一次實作進 R2。  
+目標是建立一份可供後續 Agent 直接開工的前台模組清單、來源對照、依賴拆解、風險分級與移植順序。
 
 ---
 
-## 3. 分工總原則
+## 2. Agent B 任務摘要
 
-### 3.1 工作方式
+### 2.1 Agent
 
-建議使用 `git worktree`，避免多 Agent 同時在同一個目錄與分支修改檔案。
+`GPT-5.4 Medium / High`
 
-基準目錄：
+### 2.2 任務名稱
+
+`R2 Frontend Six-Module Inventory And Migration Strategy`
+
+### 2.3 工作目錄
+
+`/home/b827262/project/AI-SmartBook-R2`
+
+### 2.4 基礎分支
+
+`feat/r2-integrate-imports-notes`
+
+### 2.5 任務類型
+
+純盤點 / 文件 / 規劃任務。  
+除非為了補充盤點證據而必須小幅新增說明文件，否則**不應修改前台功能程式碼**。
+
+---
+
+## 3. 背景現況
+
+R2 目前前台學生端已落地的頁面只有：
+
+| 路由 | 檔案 | 狀態 |
+|------|------|------|
+| `/books` | `apps/AI-Stu-R1/src/pages/BooksPage.tsx` | 已有 |
+| `/books/:bookId` | `apps/AI-Stu-R1/src/pages/BookReaderPage.tsx` | 已有 |
+
+也就是說，R2 目前已實裝的前台主體仍然集中在：
+
+1. 書本列表
+2. 書本閱讀器
+3. 書本內 AI / 筆記 / TOC 等子能力
+
+相對地，舊前台 reference 中仍存在大量尚未納入 R2 的學生功能模組，尤其是本次要盤點的六大模組：
+
+1. 智能書本
+2. 影音
+3. 題庫
+4. 筆記
+5. 手稿
+6. 我的題庫
+
+---
+
+## 4. Agent B 核心目標
+
+Agent B 必須完成以下成果：
+
+1. 盤點舊前台六大模組在 `legacy/old-frontend-ux-reference` 中的主要頁面 / feature / 共用元件來源。
+2. 盤點每個模組在 R2 現況中：
+   - 已存在什麼
+   - 缺少什麼
+   - 是否可直接沿用既有 R2 schema / API / state model
+3. 針對每個模組提出：
+   - 最小可移植切片（small vertical slice）
+   - 前置依賴
+   - 技術風險
+   - 建議拆分分支
+4. 輸出一份正式報告，讓後續 Agent 可以依模組逐個開分支移植。
+
+---
+
+## 5. 六大模組盤點範圍
+
+### 5.1 智能書本
+
+**舊前台主要來源**
+
+| 類型 | 路徑 |
+|------|------|
+| 主頁入口 | `legacy/old-frontend-ux-reference/client-src/pages/SmartBooks.tsx` |
+| 主要功能 | `legacy/old-frontend-ux-reference/client-src/features/smartbook/SmartBooksRoute.tsx` |
+| viewer 包裝 | `legacy/old-frontend-ux-reference/client-src/features/smartbook/SmartBookViewer.tsx` |
+| 相關組件 | `legacy/old-frontend-ux-reference/client-src/features/smartbook/*` |
+
+**R2 現況**
+
+| 項目 | 狀態 |
+|------|------|
+| 書本列表 | 已有 |
+| 書本閱讀器 | 已有 |
+| AI 筆記 | 已有 MVP |
+| 智能書本其他複合頁籤能力 | 多數未搬 |
+
+**盤點重點**
+
+- 舊版 SmartBooksRoute 是否其實已被 R2 `BooksPage + BookReaderPage` 吸收大部分骨架
+- 哪些能力是閱讀器內子模組而非獨立模組
+- 哪些 UI/流程不應整包搬移，應拆成 reader 子功能
+
+### 5.2 影音
+
+**舊前台主要來源**
+
+| 類型 | 路徑 |
+|------|------|
+| 主頁 | `legacy/old-frontend-ux-reference/client-src/pages/VideoCourse.tsx` |
+| 內嵌版 | `legacy/old-frontend-ux-reference/client-src/pages/VideoCourse.tsx` 中 `VideoCourseEmbedded` |
+| 與 tutor chat 串接 | `legacy/old-frontend-ux-reference/client-src/features/tutor-chat/TutorChatRoute.tsx` |
+
+**R2 現況**
+
+| 項目 | 狀態 |
+|------|------|
+| 影音前台 route | 無 |
+| 影音資料模型 | 未見 R2 專用 schema / API |
+| 與學生端 header / portal 串接 | 無 |
+
+**盤點重點**
+
+- 影音是否必須先有 admin module / 資料表 / 字幕 API 才可搬
+- 哪些依賴來自舊系統 tRPC / 影音後端，R2 尚未具備
+- 是否應先做只讀播放殼層，再補 AI 問答 / 字幕跳轉
+
+### 5.3 題庫
+
+**舊前台主要來源**
+
+| 類型 | 路徑 |
+|------|------|
+| 學生練習主頁 | `legacy/old-frontend-ux-reference/client-src/pages/AiQuestionPractice.tsx` |
+| 題庫列表頁 | `legacy/old-frontend-ux-reference/client-src/pages/QuestionBankList.tsx` |
+| 智能書本內題庫區塊 | `legacy/old-frontend-ux-reference/client-src/features/smartbook/SmartBooksRoute.tsx` |
+
+**R2 現況**
+
+| 項目 | 狀態 |
+|------|------|
+| 題庫 JSON 匯入 staging | 已有 admin 端 |
+| 學生前台題庫 route | 無 |
+| 正式題庫資料表 | 尚未完成 |
+| 題目作答 / 成績 / 解析 | 無 |
+
+**盤點重點**
+
+- 題庫學生前台不能直接搬，因為正式資料層尚未完成
+- 必須分清楚「staging 匯入」與「學生可練習題庫」的差異
+- 哪些 UI 可以預先移植，哪些必須等 `question_bank_items` 等正式 schema
+
+### 5.4 筆記
+
+**舊前台主要來源**
+
+| 類型 | 路徑 |
+|------|------|
+| 筆記頁 | `legacy/old-frontend-ux-reference/client-src/pages/Notes.tsx` |
+| 學習筆記頁 | `legacy/old-frontend-ux-reference/client-src/pages/LearningNotes.tsx` |
+| 筆記詳情 | `legacy/old-frontend-ux-reference/client-src/pages/LearningNoteDetail.tsx` |
+| 內嵌筆記 tab | `legacy/old-frontend-ux-reference/client-src/pages/tabs/InlineNotesTab.tsx` |
+| 我的筆記本 | `legacy/old-frontend-ux-reference/client-src/pages/MyNotes.tsx` |
+
+**R2 現況**
+
+| 項目 | 狀態 |
+|------|------|
+| reader 內 smart notes | 已有 |
+| 獨立筆記中心 | 無 |
+| saved folders / categories | 無對應 schema |
+| 筆記 AI 提問 / 圖片上傳 | 無 |
+
+**盤點重點**
+
+- 區分「書本內 smart notes」與「全域筆記中心」是兩種產品層級
+- 哪些資料仍可重用 `smart_book_notes`
+- 哪些舊版功能依賴 tRPC savedNotes 系統，R2 目前沒有
+
+### 5.5 手稿
+
+**舊前台主要來源**
+
+| 類型 | 路徑 |
+|------|------|
+| Chat / Manus 整合 | `legacy/old-frontend-ux-reference/client-src/pages/Chat.tsx` |
+| Manus 對話 / OAuth / 雲端依賴 | 同上與相關 AI 設定頁 |
+
+**R2 現況**
+
+| 項目 | 狀態 |
+|------|------|
+| Manus 專屬 route | 無 |
+| Manus auth / cloud backend | 無 |
+| R2 AI provider | 目前偏書本 / admin 任務用途 |
+
+**盤點重點**
+
+- 手稿模組是否應視為外部依賴高、暫不納入第一波
+- 哪些 UX 是可保留概念、不可直接照搬實作
+- 是否應先拆成 spike / feasibility study，而不是正式功能分支
+
+### 5.6 我的題庫
+
+**舊前台主要來源**
+
+| 類型 | 路徑 |
+|------|------|
+| 題庫管理 / 我的題庫相關流程 | `legacy/old-frontend-ux-reference/client-src/pages/AiQuestionPractice.tsx`、`QuestionBankList.tsx`、部分 SmartBooksRoute |
+
+**R2 現況**
+
+| 項目 | 狀態 |
+|------|------|
+| 學生個人題庫收藏 / 已購 / 已解鎖視圖 | 無 |
+| 題庫正式資料層 | 尚未完成 |
+| 個人題庫歷史 / 錯題 / 復習 | 無 |
+
+**盤點重點**
+
+- 明確區分「平台題庫」與「我的題庫」
+- 釐清是否依賴購買、點數、解鎖、歷史成績等舊系統模型
+- 判斷應延後到正式題庫功能完成後再切出
+
+---
+
+## 6. 建議盤點方法
+
+Agent B 應至少讀取以下來源後再出結論：
+
+### 6.1 R2 現有前台
+
+| 檔案 | 用途 |
+|------|------|
+| `apps/AI-Stu-R1/src/App.tsx` | 目前學生端實際 route 範圍 |
+| `apps/AI-Stu-R1/src/pages/BooksPage.tsx` | 書本首頁能力 |
+| `apps/AI-Stu-R1/src/pages/BookReaderPage.tsx` | 現有 reader 能力範圍 |
+| `apps/AI-Stu-R1/src/components/*` | reader / AI / notes / chapter / toolbar 組成 |
+
+### 6.2 R2 現有資料層
+
+| 檔案 | 用途 |
+|------|------|
+| `packages/schema/src/*` | 判斷目前有哪些正式 schema |
+| `packages/db/src/schema.ts` | SQLite table 現況 |
+| `apps/AI-adm-D1/src/server/index.ts` | 已有學生 / 管理 API 能力 |
+
+### 6.3 舊前台 reference
+
+| 檔案群組 | 用途 |
+|------|------|
+| `legacy/old-frontend-ux-reference/client-src/pages/*` | 找主入口頁 |
+| `legacy/old-frontend-ux-reference/client-src/features/*` | 找複合流程與大型功能 |
+| `legacy/old-frontend-ux-reference/client-src/components/*` | 找可重用 UI / editor / viewer |
+
+---
+
+## 7. Agent B 輸出要求
+
+Agent B 必須至少產出一份正式報告，內容需包含：
+
+1. 六大模組總表
+2. 每個模組：
+   - 舊前台主要來源檔案
+   - R2 是否已有對應功能
+   - 缺少 route / API / DB / state 的項目
+   - 可先搬的最小切片
+   - 暫不可搬的原因
+   - 風險等級
+   - 建議獨立分支名稱
+3. 建議實作順序
+4. 明確標示：
+   - 哪些屬於「直接移植」
+   - 哪些屬於「重設計後再移植」
+   - 哪些屬於「暫不建議進入第一波」
+
+---
+
+## 8. 建議輸出格式
+
+報告建議檔名：
+
+`docs/r2/AI-SmartBook-R2-frontend-six-module-inventory-and-migration-report-20260623.md`
+
+若需任務書，可另補：
+
+`docs/r2/AI-SmartBook-R2-frontend-six-module-inventory-and-migration-task-20260623.md`
+
+---
+
+## 9. 建議分支策略
+
+本任務本身建議走**文件分支**或直接在盤點分支進行，不做大規模 source code 變更。
+
+後續若要依盤點結果實作，建議拆成至少下列分支：
+
+| 優先序 | 建議分支 | 模組 | 原因 |
+|------|------|------|------|
+| 1 | `feat/r2-student-notes-center` | 筆記 | 與現有 `smart_book_notes` 最接近 |
+| 2 | `feat/r2-student-question-bank-shell` | 題庫 | 可先做空殼 / 只讀列表，但正式資料層仍待補 |
+| 3 | `feat/r2-student-video-shell` | 影音 | 可先做 route / layout / mock shell |
+| 4 | `feat/r2-smartbook-reader-advanced-panels` | 智能書本 | 把舊 SmartBooksRoute 能力拆回 reader 子模組 |
+| 5 | `spike/r2-manus-module-feasibility` | 手稿 | 外部依賴高，先做 feasibility |
+| 6 | `feat/r2-my-question-bank` | 我的題庫 | 依賴正式題庫與個人化資料模型，後置 |
+
+---
+
+## 10. 執行規則
+
+1. 不修改 `.env`
+2. 不提交 SQLite `.db`
+3. 不提交 logs / uploads / backups / `.claude`
+4. 不直接把舊前台整包複製進 R2
+5. 盤點時要明確區分：
+   - UI 殼層
+   - 資料層依賴
+   - 舊系統專屬 tRPC / auth / Manus / 點數邏輯
+6. 若某模組高度依賴舊系統且 R2 完全沒有基礎資料層，必須標示為 `high risk` 或 `defer`
+
+---
+
+## 11. Agent B Prompt
 
 ```text
+GitHub Execution in English.
+Report in Traditional Chinese.
+
+Task:
+Inventory and propose a migration strategy for six legacy student-facing frontend modules into AI-SmartBook-R2.
+
+Workspace:
 /home/b827262/project/AI-SmartBook-R2
-```
-
-建議 worktree 目錄：
-
-```text
-/home/b827262/project/AI-SmartBook-R2-agent-a-build
-/home/b827262/project/AI-SmartBook-R2-agent-b-student-modules
-/home/b827262/project/AI-SmartBook-R2-agent-c-admin-architecture
-/home/b827262/project/AI-SmartBook-R2-agent-d-ux-acceptance
-```
-
-### 3.2 不可同時做的事
-
-```text
-1. 不要讓四個 Agent 同時改 feat/r2-integrate-imports-notes。
-2. 不要直接 merge 大型上游分支。
-3. 不要提交 .env、SQLite DB、logs、uploads、backups、.claude。
-4. 不要把 UI / UX 驗收和功能實作混在同一個 commit。
-5. 不要讓文件任務與 source code 任務混在同一個分支。
-```
-
-### 3.3 建議分支策略
-
-```text
-Agent A：fix/r2-build-typecheck-runtime-guards-v2
-Agent B：docs/r2-student-six-modules-inventory
-Agent C：docs/r2-admin-architecture-next-plan
-Agent D：docs/r2-ux-rwd-visual-acceptance
-```
-
-若 Agent C 已在 `feat/r2-admin-notes-management` 進行功能實作，後續應先完成該分支驗收，再決定是否 merge 回 `feat/r2-integrate-imports-notes`。
-
----
-
-# 4. Agent A 任務 — codex-5.3-Spark 128K
-
-## 4.1 定位
-
-```text
-快速修 build、typecheck、runtime guard、小範圍 bug，不做大型架構決策。
-```
-
-## 4.2 工作目標
-
-```text
-1. 確保 pnpm build 可穩定執行。
-2. 排除 DB build error / unable to open database file。
-3. 維持 BookReaderPage.tsx TypeScript clean。
-4. 確認 AI-Stu-R1 / AI-adm-D1 build 和 typecheck PASS。
-5. 檢查 feat/r2-admin-notes-management 是否引入新 build/typecheck 問題。
-```
-
-## 4.3 建議分支
-
-```text
-fix/r2-build-typecheck-runtime-guards-v2
-```
-
-Base branch：
-
-```text
-feat/r2-integrate-imports-notes
-```
-
-如果要檢查 notes management 分支，則可另外 compare：
-
-```text
-feat/r2-admin-notes-management
-```
-
-## 4.4 Agent A Prompt
-
-```text
-GitHub Execution in English.
-Termination report in Traditional Chinese.
-
-Task:
-Run R2 build/typecheck stability verification and fix only small build/typecheck/runtime guard issues.
-
-Workspace:
-/home/b827262/project/AI-SmartBook-R2-agent-a-build
 
 Base branch:
 feat/r2-integrate-imports-notes
 
-Create branch:
-fix/r2-build-typecheck-runtime-guards-v2
-
-Context:
-Previous fixes were made in BookReaderPage.tsx and post-merge E500 acceptance passed. A new admin notes management feature branch also exists:
-feat/r2-admin-notes-management
-
-Scope:
-1. Verify current integration branch build/typecheck.
-2. Verify whether feat/r2-admin-notes-management has any build/typecheck regressions.
-3. Fix only safe TypeScript/build issues if found.
-4. Do not refactor architecture.
-5. Do not touch UX/CSS except if needed for build correctness.
-
-Commands:
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 typecheck
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 build
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-adm-D1 typecheck
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-adm-D1 build
-PNPM_HOME=/tmp/pnpm pnpm build
-
-Rules:
-- Do not commit .env.
-- Do not commit DB files.
-- Do not commit logs, uploads, backups, .claude.
-- Do not implement new features.
-- If pnpm build fails due to DB access, document root cause and implement the smallest safe guard.
-
-Create report:
-docs/r2/AI-SmartBook-R2-agent-a-build-typecheck-report-20260623.md
-
-Commit:
-fix(r2): stabilize build and typecheck after admin notes work
-
-Push:
-origin fix/r2-build-typecheck-runtime-guards-v2
-
-Final report in Traditional Chinese:
-- 狀態
-- 分支
-- 檢查的 base branch / feature branch
-- 修正檔案
-- pnpm build 結果
-- AI-Stu-R1 typecheck/build 結果
-- AI-adm-D1 typecheck/build 結果
-- 是否仍有 DB build error
-- Commit SHA
-- Push 結果
-- 是否提交 .env/db/log/.claude：否
-```
-
-## 4.5 驗收標準
-
-```text
-1. AI-Stu-R1 typecheck PASS。
-2. AI-Stu-R1 build PASS。
-3. AI-adm-D1 typecheck PASS。
-4. AI-adm-D1 build PASS。
-5. pnpm build 若仍失敗，必須明確分類為 pre-existing / environment / code regression。
-6. 沒有提交不該提交的本地檔案。
-```
-
----
-
-# 5. Agent B 任務 — GPT-5.4 Medium / High
-
-## 5.1 定位
-
-```text
-前台六大模組盤點與移植策略，不先大改 source code。
-```
-
-## 5.2 六大模組
-
-```text
-1. 智能書本
-2. 智能影音
-3. 智能題庫
-4. 智能筆記
-5. 智能手稿
-6. 我的題庫
-```
-
-## 5.3 工作目標
-
-盤點 R2 目前前台對這六大模組的狀態：
-
-```text
-1. 是否有 route
-2. 是否有 page/component
-3. 是否有 API
-4. 是否有 DB table/model
-5. 是否有 CSS/RWD
-6. 是否有上游參考實作
-7. 目前是 done / partial / placeholder / missing
-8. 下一步建議
-```
-
-## 5.4 建議分支
-
-```text
-docs/r2-student-six-modules-inventory
-```
-
-Base branch：
-
-```text
-feat/r2-integrate-imports-notes
-```
-
-## 5.5 Agent B Prompt
-
-```text
-GitHub Execution in English.
-Termination report in Traditional Chinese.
-
-Task:
-Create the AI-SmartBook-R2 student six-module inventory and migration strategy.
-
-Workspace:
-/home/b827262/project/AI-SmartBook-R2-agent-b-student-modules
-
-Base branch:
-feat/r2-integrate-imports-notes
-
-Create branch:
-docs/r2-student-six-modules-inventory
-
-Reference upstream directory:
-/home/b827262/project/ai_tutor_helper_upstream_ai_notes
-
-Do not modify the upstream reference directory.
-
-Scope:
-Documentation only. Do not modify source code.
-
-Modules to inventory:
-1. 智能書本
-2. 智能影音
-3. 智能題庫
-4. 智能筆記
-5. 智能手稿
-6. 我的題庫
-
-For each module, document:
-- R2 route
-- R2 page/component
-- R2 API endpoint
-- R2 DB table/model
-- R2 CSS/RWD status
-- upstream route/page/API/table if found
-- status: done / partial / placeholder / missing / incompatible
-- migration risk
-- recommended implementation branch
-- recommended next step
-
-Search keywords:
-student, books, video, media, question, quiz, notes, handwriting, manuscript, my questions, smart book, smart video, smart question, smart note, 智能書本, 智能影音, 智能題庫, 智能筆記, 智能手稿, 我的題庫
-
-Create report:
-docs/r2/AI-SmartBook-R2-student-six-modules-inventory-20260623.md
-
-Commit:
-docs(r2): add student six modules inventory
-
-Push:
-origin docs/r2-student-six-modules-inventory
-
-Final report in Traditional Chinese:
-- 狀態
-- 分支
-- 盤點模組數
-- done / partial / missing 統計
-- 缺少 route
-- 缺少 API
-- 缺少 DB table
-- 建議實作順序
-- Commit SHA
-- Push 結果
-- 是否修改 source code：否
-- 是否提交 .env/db/log/.claude：否
-```
-
-## 5.6 驗收標準
-
-```text
-1. 產出完整六大模組對照表。
-2. 明確指出哪些功能只是入口/版面，哪些已有資料流。
-3. 明確列出上游可參考檔案。
-4. 不修改 source code。
-5. 不提交本地機密或 runtime 檔案。
-```
-
----
-
-# 6. Agent C 任務 — Claude Sonnet 4.6 Medium / High
-
-## 6.1 定位
-
-```text
-管理後台盤點與架構建議，並負責低風險 admin 功能分支設計。
-```
-
-## 6.2 目前狀態
-
-Agent C 已完成：
-
-```text
-feat/r2-admin-notes-management
-Commit：92665e70
-後續 Codex 補充 commit：57b8d4df
-```
-
-下一步不建議立刻開新大型功能，而是先完成：
-
-```text
-1. 整理 admin notes 分支是否可 merge 回 feat/r2-integrate-imports-notes。
-2. 明確列出與 integration branch 的差異。
-3. 若無風險，再準備 PR / merge handoff。
-```
-
-## 6.3 建議分支
-
-繼續使用：
-
-```text
-feat/r2-admin-notes-management
-```
-
-或建立文件分支：
-
-```text
-docs/r2-admin-notes-merge-readiness
-```
-
-## 6.4 Agent C Prompt
-
-```text
-GitHub Execution in English.
-Termination report in Traditional Chinese.
-
-Task:
-Prepare merge-readiness review for feat/r2-admin-notes-management.
-
-Workspace:
-/home/b827262/project/AI-SmartBook-R2-agent-c-admin-architecture
-
-Base branch:
-feat/r2-integrate-imports-notes
-
-Feature branch:
-feat/r2-admin-notes-management
-
-Context:
-Claude implemented Admin Notes Management and pushed commit 92665e70.
-Codex continued the same branch and pushed commit 57b8d4df.
-Before merging this feature back into feat/r2-integrate-imports-notes, perform a merge-readiness review.
-
-Scope:
-Documentation-first. Do not merge unless explicitly instructed.
-
-Review:
-1. Compare feat/r2-integrate-imports-notes..feat/r2-admin-notes-management.
-2. List changed files.
-3. Confirm added routes:
-   - /admin/notes
-4. Confirm added APIs:
-   - GET /api/admin/notes
-   - GET /api/admin/books/:bookId/notes
-   - DELETE /api/admin/books/:bookId/notes/:noteId
-5. Confirm DB usage:
-   - reuse smart_book_notes
-   - no unnecessary new table
-6. Confirm sidebar entry.
-7. Confirm duplicate route cleanup from Codex session.
-8. Confirm typecheck/build status.
-9. Identify merge risks.
-10. Provide go/no-go recommendation.
-
-Create report:
-docs/r2/AI-SmartBook-R2-admin-notes-management-merge-readiness-20260623.md
-
-Commit:
-docs(r2): add admin notes merge readiness review
-
-Push:
-origin feat/r2-admin-notes-management
-
-Final report in Traditional Chinese:
-- 狀態
-- feature branch
-- base branch
-- changed files
-- APIs added
-- route added
-- DB impact
-- typecheck/build result
-- merge risk
-- go/no-go recommendation
-- Commit SHA
-- Push result
-- 是否提交 .env/db/log/.claude：否
-```
-
-## 6.5 驗收標準
-
-```text
-1. 清楚判斷 feat/r2-admin-notes-management 是否可合回主整合分支。
-2. 列出所有 changed files。
-3. 確認沒有多餘 migration / DB table。
-4. 確認無重複 route。
-5. 提供 go/no-go 結論。
-```
-
----
-
-# 7. Agent D 任務 — AGY / Gemini 3.1 Pro High
-
-## 7.1 定位
-
-```text
-UX、外觀、底圖、圖片素材、CSS、RWD、截圖驗收。
-```
-
-Agent D 不負責主功能實作，不改 DB，不改 API。重點是實機視覺、RWD、可用性、截圖與驗收報告。
-
-## 7.2 工作目標
-
-```text
-1. 驗收 R2 admin sidebar 模組化後的 UX。
-2. 驗收 Question Bank / Smart Solve / Admin Notes 頁面是否易用。
-3. 驗收 Student /books、Reader、AI Notes Navigation 的流程。
-4. 檢查 390px mobile RWD。
-5. 檢查圖片、底圖、封面、fallback 狀態。
-6. 產出截圖驗收報告。
-```
-
-## 7.3 建議分支
-
-```text
-docs/r2-ux-rwd-visual-acceptance
-```
-
-Base branch：
-
-```text
-feat/r2-integrate-imports-notes
-```
-
-若要驗收 Admin Notes：
-
-```text
-feat/r2-admin-notes-management
-```
-
-## 7.4 Agent D Prompt
-
-```text
-GitHub Execution in English.
-Termination report in Traditional Chinese.
-
-Task:
-Run UX/RWD/visual acceptance for AI-SmartBook-R2.
-
-Workspace:
-/home/b827262/project/AI-SmartBook-R2-agent-d-ux-acceptance
-
-Base branch:
-feat/r2-integrate-imports-notes
-
-Optional feature branch to inspect:
-feat/r2-admin-notes-management
-
-Scope:
-UX / CSS / RWD / screenshots / visual acceptance only.
-Do not modify DB or API.
-Do not implement new backend features.
-
-Pages to test:
-Admin:
-- /admin
-- /admin/books
-- /admin/books/new
-- /admin/import/question-bank
-- /admin/import/smart-solve
-- /admin/notes if testing feat/r2-admin-notes-management
-
-Student:
-- /books
-- book reader page for a real book
-- AI notes panel
-- AI notes navigation flow
-
-Viewport sizes:
-- desktop 1440px
-- tablet 768px
-- mobile 390px
-
-Check:
-1. Sidebar groups readable.
-2. Disabled/planned menu items are not misleading.
-3. Question Bank import help text is understandable.
-4. Smart Solve book selector is understandable.
-5. Admin Notes page is usable if present.
-6. Student books grid works.
-7. Reader does not show Vite overlay.
-8. AI Notes navigation flow is discoverable.
-9. No broken background image or cover image layout.
-10. Mobile layout does not overflow.
-
-Create report:
-docs/r2/AI-SmartBook-R2-ux-rwd-visual-acceptance-20260623.md
-
-If screenshots are created, store only safe lightweight screenshots under:
-docs/validation/screenshots/r2-ux-20260623/
-
-Do not commit large binary files without user approval.
-
-Commit:
-docs(r2): add UX RWD visual acceptance report
-
-Push:
-origin docs/r2-ux-rwd-visual-acceptance
-
-Final report in Traditional Chinese:
-- 狀態
+Focus modules:
+1. Smart Book
+2. Video
+3. Question Bank
+4. Notes
+5. Manus
+6. My Question Bank
+
+Primary goal:
+Produce a formal migration report that maps each legacy module to:
+- source files in legacy/old-frontend-ux-reference
+- current R2 status
+- missing route/API/DB/state pieces
+- minimum viable migration slice
+- dependencies
+- risk level
+- suggested implementation branch
+
+Important rules:
+1. Do not modify .env.
+2. Do not commit DB files, logs, uploads, backups, or .claude.
+3. Do not bulk-copy old frontend code into R2.
+4. Distinguish clearly between:
+   - reusable UI
+   - reusable domain flow
+   - legacy-only backend dependencies
+5. Mark modules that should be deferred instead of migrated immediately.
+
+Suggested files to inspect:
+- apps/AI-Stu-R1/src/App.tsx
+- apps/AI-Stu-R1/src/pages/*
+- apps/AI-Stu-R1/src/components/*
+- apps/AI-adm-D1/src/server/index.ts
+- packages/schema/src/*
+- packages/db/src/schema.ts
+- legacy/old-frontend-ux-reference/client-src/pages/*
+- legacy/old-frontend-ux-reference/client-src/features/*
+
+Required output:
+docs/r2/AI-SmartBook-R2-frontend-six-module-inventory-and-migration-report-20260623.md
+
+The report must include:
+- executive summary
+- six-module inventory table
+- per-module migration analysis
+- recommended migration order
+- explicit defer/high-risk list
+- proposed feature branch list
+
+Validation:
+- git status --short
+- ensure no source code is unintentionally modified unless strictly needed for documentation support
+
+Final report fields:
+- status
 - branch
-- tested pages
-- tested viewport sizes
-- screenshot paths if any
-- UX issues found
-- CSS/RWD issues found
-- blocker/failure list
-- recommendation
-- Commit SHA
-- Push result
-- 是否提交 .env/db/log/.claude：否
-```
-
-## 7.5 驗收標準
-
-```text
-1. 有清楚的 UX/RWD 驗收報告。
-2. 有 desktop/tablet/mobile 結論。
-3. 有針對後台與前台分開列出問題。
-4. 不提交大型圖片或 runtime 檔案。
-5. 若有 blocker，明確附頁面與重現步驟。
+- files inspected
+- six modules covered
+- recommended order
+- defer list
+- report path
+- git status --short
+- whether .env/db/log/.claude were committed: no
 ```
 
 ---
 
-## 8. 四 Agent 執行順序建議
+## 12. 驗收標準
 
-建議不要四個同時全部改 code。最佳順序如下：
+1. 六大模組全部被逐項盤點。
+2. 每個模組都有舊前台來源對照。
+3. 每個模組都有 R2 現況評估。
+4. 每個模組都有最小切片與風險判定。
+5. 有清楚的建議實作順序。
+6. 有明確標示哪些模組應延後。
+7. 不提交 `.env` / DB / logs / uploads / backups / `.claude`。
 
-```text
-第一順位：Agent A
-先驗證 build/typecheck 與 DB build error 是否已穩定。
-
-第二順位：Agent C
-針對 feat/r2-admin-notes-management 做 merge-readiness review。
-
-第三順位：Agent D
-在穩定分支上做 UX/RWD/visual acceptance。
-
-第四順位：Agent B
-做前台六大模組盤點，作為下一階段功能移植依據。
-```
-
-可並行的安全組合：
-
-```text
-Agent A + Agent B 可並行：
-- A 改 build/typecheck 小修
-- B 只寫 docs，不改 source
-
-Agent C + Agent D 可並行但要注意分支：
-- C 看 admin notes feature branch
-- D 做 UX 驗收，若測 admin notes 必須明確指定同一 branch
-```
-
-不可並行的組合：
-
-```text
-Agent A 和 Agent C 不要同時修改 feat/r2-admin-notes-management source。
-Agent C 沒完成 merge-readiness 前，不要讓 AGY/Agent D 把 admin notes 當正式已 merge 功能。
-```
-
----
-
-## 9. 後續整合節點
-
-完成四 Agent 任務後，進入下一個 integration gate：
-
-```text
-Gate 1：Agent A build/typecheck 報告
-Gate 2：Agent C admin notes merge-readiness go/no-go
-Gate 3：Agent D UX/RWD acceptance
-Gate 4：Agent B student six-module inventory
-```
-
-若 Gate 1、Gate 2、Gate 3 都通過，才建議：
-
-```text
-將 feat/r2-admin-notes-management 合回 feat/r2-integrate-imports-notes
-```
-
-合併後再由 AGY 做一次 E500 live acceptance。
-
----
-
-## 10. 結論
-
-目前 R2 已從「功能分支整合」進入「穩定化 + 模組盤點 + 低風險功能合併前審查」階段。
-
-正式分工如下：
-
-```text
-Agent A / codex-5.3-Spark 128K：build/typecheck 穩定器
-Agent B / GPT-5.4 Medium/High：前台六大模組盤點師
-Agent C / Claude Sonnet 4.6 Medium/High：後台架構與 admin feature 審查師
-Agent D / AGY Gemini 3.1 Pro High：UX/RWD/截圖驗收師
-```
-
-下一個最重要決策：
-
-```text
-feat/r2-admin-notes-management 是否可以合回 feat/r2-integrate-imports-notes。
-```
-
-請先完成 Agent A 與 Agent C 的報告，再進行 merge。
