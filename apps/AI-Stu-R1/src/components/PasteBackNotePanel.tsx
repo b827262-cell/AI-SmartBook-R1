@@ -2,19 +2,19 @@ import { useState } from "react";
 
 interface AiProviderLink {
   name: string;
-  url: string;
+  homeUrl: string;
 }
 
 const PASTE_BACK_PROVIDERS: AiProviderLink[] = [
-  { name: "ChatGPT", url: "https://chatgpt.com/" },
-  { name: "Claude", url: "https://claude.ai/new" },
-  { name: "Gemini", url: "https://gemini.google.com/app" },
-  { name: "Perplexity", url: "https://www.perplexity.ai/" },
-  { name: "Grok", url: "https://grok.x.ai/" },
-  { name: "Copilot", url: "https://copilot.microsoft.com/" },
-  { name: "Meta AI", url: "https://www.meta.ai/" },
-  { name: "Google AI", url: "https://google.com/ai" },
-  { name: "其他", url: "" }
+  { name: "ChatGPT", homeUrl: "https://chatgpt.com/" },
+  { name: "Claude", homeUrl: "https://claude.ai/new" },
+  { name: "Gemini", homeUrl: "https://gemini.google.com/app" },
+  { name: "Perplexity", homeUrl: "https://www.perplexity.ai/" },
+  { name: "Grok", homeUrl: "https://grok.x.ai/" },
+  { name: "Copilot", homeUrl: "https://copilot.microsoft.com/" },
+  { name: "Meta AI", homeUrl: "https://www.meta.ai/" },
+  { name: "Google AI", homeUrl: "https://google.com/ai" },
+  { name: "其他", homeUrl: "" }
 ];
 
 export function PasteBackNotePanel({
@@ -58,10 +58,10 @@ export function PasteBackNotePanel({
     }
   }
 
-  function openProvider(url: string) {
-    if (!url) return;
+  function openProvider(homeUrl: string) {
+    if (!homeUrl) return;
     try {
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.open(homeUrl, "_blank", "noopener,noreferrer");
     } catch {
       setStatus("無法開啟外部頁籤，請確認瀏覽器未封鎖彈窗。");
     }
@@ -101,9 +101,9 @@ export function PasteBackNotePanel({
               key={p.name}
               type="button"
               className="paste-back-provider-btn"
-              onClick={() => openProvider(p.url)}
-              disabled={!p.url}
-              title={p.url ? `開啟 ${p.name}` : "其他平台（手動開啟）"}
+              onClick={() => openProvider(p.homeUrl)}
+              disabled={!p.homeUrl}
+              title={p.homeUrl ? `開啟 ${p.name}` : "其他平台（手動開啟）"}
             >
               {p.name}
             </button>
