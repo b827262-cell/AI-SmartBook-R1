@@ -25,7 +25,7 @@ import { ChatPanel } from "../components/ChatPanel";
 import { SmartNotesPanel } from "../components/SmartNotesPanel";
 import { TabPlaceholder } from "../components/TabPlaceholder";
 import { MyQuestionBankPanel } from "../components/MyQuestionBankPanel";
-import { StickyNoteModal } from "../components/StickyNoteModal";
+import { ManuscriptBoard } from "../components/ManuscriptBoard";
 import { ExternalAiAskModal } from "../components/ExternalAiAskModal";
 import { PasteBackNotePanel } from "../components/PasteBackNotePanel";
 import { AnswerMaskLayer, type MaskRect } from "../components/AnswerMaskLayer";
@@ -1391,6 +1391,13 @@ export function BookReaderPage() {
           </>
         ) : activeTab === "my-question-bank" ? (
           <MyQuestionBankPanel bookId={bookId} bookTitle={book.title} />
+        ) : activeTab === "smart-manuscript" ? (
+          <ManuscriptBoard
+            bookId={bookId}
+            bookTitle={book.title}
+            page={book.pdfFileId ? pdfPage : 1}
+            chapterTitle={activeChapterTitle}
+          />
         ) : (
           <TabPlaceholder label={READER_TABS.find((t) => t.key === activeTab)?.label ?? ""} />
         )}
@@ -1403,11 +1410,13 @@ export function BookReaderPage() {
       <div className="reader-outer-gutter right" aria-hidden="true" />
 
       {showStickyNote && (
-        <StickyNoteModal
+        <ManuscriptBoard
+          bookId={bookId}
           bookTitle={book.title}
           page={pdfPage}
           chapterTitle={activeChapterTitle}
           onClose={() => setShowStickyNote(false)}
+          asModal
         />
       )}
 

@@ -1830,3 +1830,147 @@ body.reader-reading-mobile {
   border: 1px solid var(--border);
 }
 .btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ---- 智能手稿 / 筆記畫板 (ManuscriptBoard) ------------------------------- */
+.manuscript-board {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #fafafa;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.manuscript-board--modal {
+  border-radius: 10px;
+  max-height: 92vh;
+  max-width: 900px;
+  width: 96vw;
+}
+
+.manuscript-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.manuscript-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--panel-soft);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.manuscript-title { font-weight: 600; font-size: 14px; }
+.manuscript-meta { font-size: 12px; margin-left: auto; }
+.manuscript-close-btn { font-size: 12px; padding: 3px 10px; margin-left: 8px; }
+
+.manuscript-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.manuscript-tool-group,
+.manuscript-color-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.manuscript-tool-btn {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+  min-width: 32px;
+}
+.manuscript-tool-btn:hover { border-color: var(--primary); color: var(--primary); }
+.manuscript-tool-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.manuscript-tool-btn:disabled { opacity: 0.35; cursor: default; }
+.manuscript-clear-btn { color: #ef4444; border-color: #fca5a5; }
+.manuscript-clear-btn:hover { background: #fef2f2; border-color: #ef4444; color: #ef4444; }
+
+.manuscript-color-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.manuscript-color-btn:hover { transform: scale(1.15); }
+.manuscript-color-btn.active { border-color: var(--primary); transform: scale(1.2); }
+
+.manuscript-sep {
+  display: inline-block;
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.manuscript-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  background: #e5e7eb;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px;
+}
+.manuscript-canvas {
+  display: block;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  border-radius: 4px;
+  touch-action: none;
+  max-width: 100%;
+  height: auto;
+}
+
+.manuscript-text-input {
+  position: absolute;
+  background: rgba(255,255,255,0.92);
+  border: 2px dashed #f97316;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 16px;
+  font-family: inherit;
+  min-width: 160px;
+  resize: both;
+  z-index: 10;
+  outline: none;
+}
+
+.manuscript-footer {
+  font-size: 11px;
+  padding: 4px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-soft);
+  flex-shrink: 0;
+}
