@@ -21,3 +21,4 @@ data/*.sqlite
 uploads
 exports/*.json
 tmp_*.ts
+data/generated-json/

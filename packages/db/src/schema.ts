@@ -193,6 +193,19 @@ export const smartSolveImportItems = sqliteTable("smart_solve_import_items", {
   updatedAt: text("updated_at").notNull()
 });
 
+export const bookJsonArtifacts = sqliteTable("book_json_artifacts", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull(),
+  artifactType: text("artifact_type").notNull(),
+  fileName: text("file_name").notNull(),
+  filePath: text("file_path").notNull(),
+  recordCount: integer("record_count").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  errorMessage: text("error_message"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
 export type DbSchema = {
   books: typeof books;
   bookFiles: typeof bookFiles;
@@ -208,6 +221,7 @@ export type DbSchema = {
   questionBankImportJobs: typeof questionBankImportJobs;
   smartSolveImportJobs: typeof smartSolveImportJobs;
   smartSolveImportItems: typeof smartSolveImportItems;
+  bookJsonArtifacts: typeof bookJsonArtifacts;
 };
 
 export const schema = {
@@ -224,5 +238,6 @@ export const schema = {
   smartBookNotes,
   questionBankImportJobs,
   smartSolveImportJobs,
-  smartSolveImportItems
+  smartSolveImportItems,
+  bookJsonArtifacts
 };

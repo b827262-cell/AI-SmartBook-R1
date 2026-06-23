@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, createReadStream } from "node:fs";
 import { resolve } from "node:path";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
@@ -60,7 +60,9 @@ import {
   type StoredJsonIndexSummary,
   type QuestionBankImportJob,
   type SmartBookNote,
-  smartSolveJsonFileSchema
+  smartSolveJsonFileSchema,
+  type ArtifactType,
+  type BookJsonArtifact
 } from "@ai-smartbook/schema";
 
 const { db, sqlite } = getDb();
@@ -73,6 +75,7 @@ const ai = createAiProvider();
 const ctx: BookCoreContext = { repos, ai };
 
 const UPLOAD_ROOT = resolve(process.env.UPLOAD_DIR || "./uploads/books");
+const GENERATED_JSON_ROOT = resolve("./data/generated-json");
 const JSON_INDEX_ROLE = "json_index" as const;
 const READER_TOC_ROLE = "reader_toc" as const;
 const READER_TOC_SCHEMA_VERSION = "smartbook-reader-toc-v1";
@@ -2562,6 +2565,206 @@ app.get("/api/admin/books/:bookId/imports/smart-solve/jobs/:jobId", (req, res) =
   if (!job || job.bookId !== bookId) return fail(res, 404, "job not found");
   const items = repos.smartSolveImports.findItemsByJob(jobId);
   return res.json({ job, items });
+});
+
+// ---- Book JSON artifact generation ----------------------------------------
+
+function toArtifactDownloadUrl(bookId: string, artifactId: string): string {
+  return `/api/admin/books/${bookId}/json-artifacts/${artifactId}/download`;
+}
+
+function artifactSummary(a: BookJsonArtifact, bookId: string) {
+  return {
+    id: a.id,
+    bookId: a.bookId,
+    artifactType: a.artifactType,
+    fileName: a.fileName,
+    recordCount: a.recordCount,
+    status: a.status,
+    errorMessage: a.errorMessage,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+    downloadUrl: toArtifactDownloadUrl(bookId, a.id)
+  };
+}
+
+/** Build page-index.json from book_contents rows. */
+function buildPageIndex(bookId: string, contents: Array<{ pageNumber?: number | null; contentText: string }>) {
+  return contents
+    .filter((c) => c.pageNumber != null)
+    .map((c) => ({
+      bookId,
+      pageNumber: c.pageNumber as number,
+      pdfPage: c.pageNumber as number,
+      text: c.contentText.slice(0, 2000)
+    }));
+}
+
+/** Build sentence-index.json — one entry per content row. */
+function buildSentenceIndex(
+  bookId: string,
+  contents: Array<{ pageNumber?: number | null; contentText: string; chapterId?: string | null }>,
+  chapters: Array<{ id: string; title: string }>
+) {
+  const chapterMap = new Map(chapters.map((c) => [c.id, c.title]));
+  return contents.map((c, i) => ({
+    id: `sent-${String(i + 1).padStart(4, "0")}`,
+    bookId,
+    pageNumber: c.pageNumber ?? 0,
+    chapterTitle: c.chapterId ? (chapterMap.get(c.chapterId) ?? "") : "",
+    text: c.contentText.slice(0, 1000)
+  }));
+}
+
+/** Generate 4 JSON artifacts for a book, write to disk, and record in DB. */
+function generateAllArtifacts(bookId: string) {
+  const contents = repos.contents.findByBookId(bookId);
+  const chapters = repos.chapters.findByBookId(bookId);
+
+  const dir = resolve(GENERATED_JSON_ROOT, bookId);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+  // Remove old artifact records for this book so re-generation is clean.
+  repos.jsonArtifacts.deleteByBookId(bookId);
+
+  const results: BookJsonArtifact[] = [];
+
+  const tasks: Array<{
+    type: ArtifactType;
+    fileName: string;
+    data: () => unknown;
+    count: () => number;
+  }> = [
+    {
+      type: "page-index",
+      fileName: "page-index.json",
+      data: () => buildPageIndex(bookId, contents),
+      count: () => contents.filter((c) => c.pageNumber != null).length
+    },
+    {
+      type: "sentence-index",
+      fileName: "sentence-index.json",
+      data: () => buildSentenceIndex(bookId, contents, chapters),
+      count: () => contents.length
+    },
+    {
+      type: "question-bank-candidates",
+      fileName: "question-bank-candidates.json",
+      data: () => ({
+        source: "book_parse",
+        bookId,
+        questions: [],
+        notice: "No rule-based questions detected. Use PDF Screenshot Ask AI or OCR pipeline to generate questions."
+      }),
+      count: () => 0
+    },
+    {
+      type: "smart-solve-candidates",
+      fileName: "smart-solve-candidates.json",
+      data: () => ({
+        source: "book_parse",
+        bookId,
+        items: chapters.map((ch, i) => ({
+          externalId: `ss-${String(i + 1).padStart(3, "0")}`,
+          prompt: `請解釋「${ch.title}」的主要概念。`,
+          solution: "",
+          explanation: "",
+          scope: {
+            chapterTitle: ch.title,
+            pageStart: ch.pageStart ?? null
+          },
+          tags: ["auto", "candidate"],
+          confidence: 0.5,
+          status: "candidate"
+        })),
+        notice: chapters.length === 0
+          ? "No chapters found. Add chapters before generating smart-solve candidates."
+          : undefined
+      }),
+      count: () => chapters.length
+    }
+  ];
+
+  for (const task of tasks) {
+    const filePath = resolve(dir, task.fileName);
+    try {
+      const data = task.data();
+      writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+      const artifact = repos.jsonArtifacts.create({
+        bookId,
+        artifactType: task.type,
+        fileName: task.fileName,
+        filePath,
+        recordCount: task.count(),
+        status: "done"
+      });
+      results.push(artifact);
+    } catch (err) {
+      const artifact = repos.jsonArtifacts.create({
+        bookId,
+        artifactType: task.type,
+        fileName: task.fileName,
+        filePath,
+        recordCount: 0,
+        status: "error",
+        errorMessage: String(err)
+      });
+      results.push(artifact);
+    }
+  }
+
+  return results;
+}
+
+// POST /api/admin/books/:bookId/json-artifacts/generate
+app.post("/api/admin/books/:bookId/json-artifacts/generate", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const artifacts = generateAllArtifacts(bookId);
+  return res.status(201).json({
+    bookId,
+    artifacts: artifacts.map((a) => artifactSummary(a, bookId))
+  });
+});
+
+// GET /api/admin/books/:bookId/json-artifacts
+app.get("/api/admin/books/:bookId/json-artifacts", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const artifacts = repos.jsonArtifacts.findByBookId(bookId);
+  return res.json({ artifacts: artifacts.map((a) => artifactSummary(a, bookId)) });
+});
+
+// GET /api/admin/books/:bookId/json-artifacts/:artifactId/download
+app.get("/api/admin/books/:bookId/json-artifacts/:artifactId/download", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const artifactId = String(req.params.artifactId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const artifact = repos.jsonArtifacts.findById(artifactId);
+  if (!artifact || artifact.bookId !== bookId) return fail(res, 404, "artifact not found");
+  if (!existsSync(artifact.filePath)) return fail(res, 404, "artifact file missing — please regenerate");
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${artifact.fileName}"`);
+  createReadStream(artifact.filePath).pipe(res);
+});
+
+// DELETE /api/admin/books/:bookId/json-artifacts/:artifactId
+app.delete("/api/admin/books/:bookId/json-artifacts/:artifactId", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const artifactId = String(req.params.artifactId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const artifact = repos.jsonArtifacts.findById(artifactId);
+  if (!artifact || artifact.bookId !== bookId) return fail(res, 404, "artifact not found");
+  if (existsSync(artifact.filePath)) {
+    try { unlinkSync(artifact.filePath); } catch { /* ignore */ }
+  }
+  repos.jsonArtifacts.deleteById(artifactId);
+  return res.json({ deleted: true });
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);

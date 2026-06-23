@@ -8,6 +8,7 @@ import { ChaptersTab } from "./tabs/ChaptersTab";
 import { QaTab } from "./tabs/QaTab";
 import { AiJobsTab } from "./tabs/AiJobsTab";
 import { OverviewTab } from "./tabs/OverviewTab";
+import { JsonArtifactsTab } from "./tabs/JsonArtifactsTab";
 
 export function BookDetail() {
   const { bookId = "" } = useParams();
@@ -44,6 +45,7 @@ export function BookDetail() {
         {tab("/chapters", "章節")}
         {tab("/qa", "知識問答")}
         {tab("/ai-jobs", "AI 任務")}
+        {tab("/json-artifacts", "JSON 產生")}
       </div>
       <Routes>
         <Route index element={<OverviewTab bookId={bookId} />} />
@@ -52,6 +54,7 @@ export function BookDetail() {
         <Route path="chapters" element={<ChaptersTab bookId={bookId} />} />
         <Route path="qa" element={<QaTab bookId={bookId} />} />
         <Route path="ai-jobs" element={<AiJobsTab bookId={bookId} />} />
+        <Route path="json-artifacts" element={<JsonArtifactsTab bookId={bookId} />} />
       </Routes>
     </div>
   );

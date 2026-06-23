@@ -21,7 +21,9 @@ import type {
   QuestionBankImportResult,
   SmartSolveImportJob,
   SmartSolveImportItem,
-  SmartBookNote
+  SmartBookNote,
+  BookJsonArtifactSummary,
+  GenerateArtifactsResponse
 } from "@ai-smartbook/schema";
 
 export interface ChapterInput {
@@ -380,6 +382,24 @@ export const adminApi = {
     http<{ job: SmartSolveImportJob; items: SmartSolveImportItem[] }>(
       `/api/admin/books/${bookId}/imports/smart-solve/jobs/${jobId}`
     ),
+
+  // ---- JSON Artifact generation -------------------------------------------
+  generateJsonArtifacts: (bookId: string) =>
+    http<GenerateArtifactsResponse>(`/api/admin/books/${bookId}/json-artifacts/generate`, {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+
+  listJsonArtifacts: (bookId: string) =>
+    http<{ artifacts: BookJsonArtifactSummary[] }>(`/api/admin/books/${bookId}/json-artifacts`),
+
+  getJsonArtifactDownloadUrl: (bookId: string, artifactId: string) =>
+    `/api/admin/books/${bookId}/json-artifacts/${artifactId}/download`,
+
+  deleteJsonArtifact: (bookId: string, artifactId: string) =>
+    http<{ deleted: boolean }>(`/api/admin/books/${bookId}/json-artifacts/${artifactId}`, {
+      method: "DELETE"
+    })
 
 };
 

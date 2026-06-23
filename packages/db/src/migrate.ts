@@ -189,7 +189,20 @@ const STATEMENTS = [
     updated_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ss_import_jobs_book ON smart_solve_import_jobs(book_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_ss_import_items_job ON smart_solve_import_items(job_id)`
+  `CREATE INDEX IF NOT EXISTS idx_ss_import_items_job ON smart_solve_import_items(job_id)`,
+  `CREATE TABLE IF NOT EXISTS book_json_artifacts (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    record_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_book_json_artifacts_book ON book_json_artifacts(book_id)`
 ];
 
 /**
