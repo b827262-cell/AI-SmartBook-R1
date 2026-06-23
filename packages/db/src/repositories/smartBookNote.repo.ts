@@ -37,6 +37,15 @@ export function makeSmartBookNoteRepo(db: Db) {
       return toNote(row);
     },
 
+    findAll(): SmartBookNote[] {
+      return db
+        .select()
+        .from(smartBookNotes)
+        .orderBy(desc(smartBookNotes.createdAt))
+        .all()
+        .map(toNote);
+    },
+
     findByBookId(bookId: string): SmartBookNote[] {
       return db
         .select()

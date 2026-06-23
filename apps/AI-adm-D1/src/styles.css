@@ -59,6 +59,8 @@ a:hover { text-decoration: underline; }
 .btn:hover { background: #1e40af; }
 .btn.secondary { background: #e2e8f0; color: #0f172a; }
 .btn.secondary:hover { background: #cbd5e1; }
+.btn.danger { background: #dc2626; color: #fff; }
+.btn.danger:hover { background: #b91c1c; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 
 input, textarea, select {
@@ -489,6 +491,47 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
   display: flex;
   gap: 8px;
 }
+.badge.text { background: #dcfce7; color: #166534; }
+.badge.ai_answer { background: #dbeafe; color: #1e40af; }
+.badge.canvas { background: #fef3c7; color: #92400e; }
+.admin-notes-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-notes-filter {
+  min-width: 220px;
+  max-width: 360px;
+}
+.admin-notes-summary {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  color: #334155;
+  font-size: 14px;
+}
+.admin-note-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.admin-note-content {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: #334155;
+}
+.admin-note-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-note-content-cell {
+  min-width: 280px;
+  max-width: 460px;
+}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -568,3 +611,18 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
 .appearance-check { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; font-size: 14px; color: var(--text); }
 .appearance-check input { width: auto; margin: 0; }
 .appearance-color { width: 64px; height: 38px; padding: 2px; cursor: pointer; }
+
+/* ===== Admin Notes Management ============================================= */
+.admin-notes-toolbar { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+.admin-notes-filter { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+.admin-notes-filter label { margin: 0; }
+.admin-notes-summary { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); padding-bottom: 2px; }
+.admin-note-content-cell { max-width: 280px; }
+.admin-note-title { margin: 0 0 2px; font-weight: 600; font-size: 14px; }
+.admin-note-content { margin: 0; font-size: 13px; color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 3.6em; overflow: hidden; }
+.admin-note-actions { display: flex; flex-direction: column; gap: 4px; }
+.admin-inline-text-link { font-size: 12px; color: var(--primary); text-decoration: none; white-space: nowrap; }
+.admin-inline-text-link:hover { text-decoration: underline; }
+.admin-link-btn { background: none; border: none; color: #dc2626; font-size: 13px; cursor: pointer; padding: 0; font-weight: 600; }
+.admin-link-btn:hover { text-decoration: underline; }
+.admin-link-btn:disabled { opacity: .55; cursor: not-allowed; }
