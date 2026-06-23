@@ -5,6 +5,8 @@ import { adminApi } from "../api";
 import { AdminPageHeader } from "../components/admin/AdminPageHeader";
 import { AdminCard } from "../components/admin/AdminCard";
 import { AdminErrorCard } from "../components/admin/AdminErrorCard";
+import { OneClickSolvePanel } from "../components/OneClickSolvePanel";
+
 
 const SAMPLE_JSON = `{
   "items": [
@@ -224,6 +226,8 @@ export function SmartSolveImportPage() {
           </table>
         )}
       </AdminCard>
+
+      {bookId && <OneClickSolvePanel bookId={bookId} />}
 
       <div style={{ marginTop: "1.25rem" }}>
         <AdminCard title="歷史匯入紀錄">

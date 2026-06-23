@@ -11,6 +11,7 @@ import { makeSettingsRepo } from "./settings.repo";
 import { makeSmartBookNoteRepo } from "./smartBookNote.repo";
 import { makeQuestionBankImportRepo } from "./questionBankImport.repo";
 import { makeSmartSolveImportRepo } from "./smartSolveImport.repo";
+import { makeOneClickSolveRepo } from "./oneClickSolve.repo";
 
 export * from "./book.repo";
 export * from "./bookFile.repo";
@@ -24,6 +25,7 @@ export * from "./settings.repo";
 export * from "./smartBookNote.repo";
 export * from "./questionBankImport.repo";
 export * from "./smartSolveImport.repo";
+export * from "./oneClickSolve.repo";
 
 export interface Repositories {
   books: ReturnType<typeof makeBookRepo>;
@@ -38,6 +40,7 @@ export interface Repositories {
   notes: ReturnType<typeof makeSmartBookNoteRepo>;
   questionBankImports: ReturnType<typeof makeQuestionBankImportRepo>;
   smartSolveImports: ReturnType<typeof makeSmartSolveImportRepo>;
+  oneClickSolve: ReturnType<typeof makeOneClickSolveRepo>;
 }
 
 /** Build all repositories bound to a single Db handle. */
@@ -54,6 +57,8 @@ export function createRepositories(db: Db): Repositories {
     settings: makeSettingsRepo(db),
     notes: makeSmartBookNoteRepo(db),
     questionBankImports: makeQuestionBankImportRepo(db),
-    smartSolveImports: makeSmartSolveImportRepo(db)
+    smartSolveImports: makeSmartSolveImportRepo(db),
+    oneClickSolve: makeOneClickSolveRepo(db)
   };
 }
+

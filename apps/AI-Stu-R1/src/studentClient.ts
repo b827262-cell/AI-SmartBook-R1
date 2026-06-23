@@ -7,7 +7,8 @@ import type {
   CreateSmartBookNoteInput,
   ReaderOutlineResponse,
   SmartBookNote,
-  UpdateSmartBookNoteInput
+  UpdateSmartBookNoteInput,
+  OneClickSolveCandidate
 } from "@ai-smartbook/schema";
 
 export interface BookDetail extends Book {
@@ -122,5 +123,8 @@ export const studentClient = {
       sourceMessageId: string | null;
       anchor: boolean;
       fallback: string | null;
-    }>(`/api/student/books/${bookId}/notes/${noteId}/navigate`)
+    }>(`/api/student/books/${bookId}/notes/${noteId}/navigate`),
+
+  getQuestionBank: (bookId: string) =>
+    http<{ candidates: OneClickSolveCandidate[] }>(`/api/student/books/${bookId}/question-bank`)
 };

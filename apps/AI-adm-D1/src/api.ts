@@ -21,7 +21,9 @@ import type {
   QuestionBankImportResult,
   SmartSolveImportJob,
   SmartSolveImportItem,
-  SmartBookNote
+  SmartBookNote,
+  OneClickSolveJob,
+  OneClickSolveCandidate
 } from "@ai-smartbook/schema";
 
 export interface ChapterInput {
@@ -380,6 +382,26 @@ export const adminApi = {
     http<{ job: SmartSolveImportJob; items: SmartSolveImportItem[] }>(
       `/api/admin/books/${bookId}/imports/smart-solve/jobs/${jobId}`
     ),
+
+  createOneClickSolveJob: (bookId: string) =>
+    http<{ job: OneClickSolveJob }>(`/api/admin/books/${bookId}/one-click-solve/jobs`, {
+      method: "POST"
+    }),
+
+  listOneClickSolveJobs: (bookId: string) =>
+    http<{ jobs: OneClickSolveJob[] }>(`/api/admin/books/${bookId}/one-click-solve/jobs`),
+
+  getOneClickSolveJob: (bookId: string, jobId: string) =>
+    http<{ job: OneClickSolveJob; candidates: OneClickSolveCandidate[] }>(
+      `/api/admin/books/${bookId}/one-click-solve/jobs/${jobId}`
+    ),
+
+  stageOneClickSolveCandidates: (bookId: string, jobId: string, candidateIds?: string[]) =>
+    http<{ success: boolean }>(`/api/admin/books/${bookId}/one-click-solve/jobs/${jobId}/stage`, {
+      method: "POST",
+      body: JSON.stringify({ candidateIds })
+    }),
+
 
 };
 

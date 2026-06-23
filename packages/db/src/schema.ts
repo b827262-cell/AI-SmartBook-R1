@@ -193,6 +193,30 @@ export const smartSolveImportItems = sqliteTable("smart_solve_import_items", {
   updatedAt: text("updated_at").notNull()
 });
 
+export const oneClickSolveJobs = sqliteTable("one_click_solve_jobs", {
+  id: text("id").primaryKey(),
+  bookId: text("book_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
+export const oneClickSolveCandidates = sqliteTable("one_click_solve_candidates", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull(),
+  bookId: text("book_id").notNull(),
+  questionType: text("question_type").notNull(),
+  question: text("question").notNull(),
+  optionsJson: text("options_json").notNull(), // JSON string array of options: { label, text }
+  answer: text("answer"),
+  explanation: text("explanation"),
+  sourcePage: integer("source_page"),
+  sourceText: text("source_text"),
+  status: text("status").notNull().default("candidate"), // candidate, needs_review, approved, staged, rejected
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
 export type DbSchema = {
   books: typeof books;
   bookFiles: typeof bookFiles;
@@ -208,6 +232,8 @@ export type DbSchema = {
   questionBankImportJobs: typeof questionBankImportJobs;
   smartSolveImportJobs: typeof smartSolveImportJobs;
   smartSolveImportItems: typeof smartSolveImportItems;
+  oneClickSolveJobs: typeof oneClickSolveJobs;
+  oneClickSolveCandidates: typeof oneClickSolveCandidates;
 };
 
 export const schema = {
@@ -224,5 +250,8 @@ export const schema = {
   smartBookNotes,
   questionBankImportJobs,
   smartSolveImportJobs,
-  smartSolveImportItems
+  smartSolveImportItems,
+  oneClickSolveJobs,
+  oneClickSolveCandidates
 };
+

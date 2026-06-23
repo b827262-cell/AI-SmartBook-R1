@@ -42,6 +42,40 @@ export class MockAiProvider implements AiProvider {
       return `（mock 回答）根據書本內容，${q.replace("Question:", "").trim()} 的重點如下：請參考上方引用段落的說明。`;
     }
 
+    if (system.includes("one-click-solve") || input.prompt.includes("one-click-solve")) {
+      return JSON.stringify([
+        {
+          questionType: "single_choice",
+          question: "什麼是本文提到的核心概念？",
+          options: [
+            { label: "A", text: "抗重力設計" },
+            { label: "B", text: "古典力學" },
+            { label: "C", text: "量子纏結" },
+            { label: "D", text: "相對論" }
+          ],
+          answer: "A",
+          explanation: "根據教材內容，核心概念是抗重力設計。",
+          sourcePage: 1,
+          sourceText: "本教材主要探討抗重力設計的實務應用..."
+        },
+        {
+          questionType: "single_choice",
+          question: "關於第二章的描述，下列何者正確？",
+          options: [
+            { label: "A", text: "內容完全無用" },
+            { label: "B", text: "介紹了核心概念與重要定義" },
+            { label: "C", text: "只討論了歷史背景" },
+            { label: "D", text: "是由機器人撰寫的" }
+          ],
+          answer: "B",
+          explanation: "第二章導言明確指出本章說明核心概念與重要定義。",
+          sourcePage: 2,
+          sourceText: "第二章核心概念：本章說明核心概念與重要定義。"
+        }
+      ]);
+    }
+
     return `[mock-ai] ${input.prompt.slice(0, 300)}`;
+
   }
 }

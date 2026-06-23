@@ -12,3 +12,5 @@ export * from "./sync.schema";
 export * from "./appearance.schema";
 export * from "./questionBankImport.schema";
 export * from "./smartSolveImport.schema";
+export * from "./oneClickSolve.schema";
+

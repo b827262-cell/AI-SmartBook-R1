@@ -24,6 +24,8 @@ import { ProtectedPdfViewer } from "../components/ProtectedPdfViewer";
 import { ChatPanel } from "../components/ChatPanel";
 import { SmartNotesPanel } from "../components/SmartNotesPanel";
 import { TabPlaceholder } from "../components/TabPlaceholder";
+import { MyQuestionBankPanel } from "../components/MyQuestionBankPanel";
+
 import { StickyNoteModal } from "../components/StickyNoteModal";
 import { ExternalAiAskModal } from "../components/ExternalAiAskModal";
 import { PasteBackNotePanel } from "../components/PasteBackNotePanel";
@@ -1388,6 +1390,8 @@ export function BookReaderPage() {
               </div>
             ) : null}
           </>
+        ) : activeTab === "my-question-bank" ? (
+          <MyQuestionBankPanel bookId={bookId} />
         ) : (
           <TabPlaceholder label={READER_TABS.find((t) => t.key === activeTab)?.label ?? ""} />
         )}

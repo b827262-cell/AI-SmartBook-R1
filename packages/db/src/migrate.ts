@@ -189,7 +189,32 @@ const STATEMENTS = [
     updated_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ss_import_jobs_book ON smart_solve_import_jobs(book_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_ss_import_items_job ON smart_solve_import_items(job_id)`
+  `CREATE INDEX IF NOT EXISTS idx_ss_import_items_job ON smart_solve_import_items(job_id)`,
+  `CREATE TABLE IF NOT EXISTS one_click_solve_jobs (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS one_click_solve_candidates (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    book_id TEXT NOT NULL,
+    question_type TEXT NOT NULL,
+    question TEXT NOT NULL,
+    options_json TEXT NOT NULL,
+    answer TEXT,
+    explanation TEXT,
+    source_page INTEGER,
+    source_text TEXT,
+    status TEXT NOT NULL DEFAULT 'candidate',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_one_click_solve_jobs_book ON one_click_solve_jobs(book_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_one_click_solve_candidates_job ON one_click_solve_candidates(job_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_one_click_solve_candidates_book ON one_click_solve_candidates(book_id)`
 ];
 
 /**

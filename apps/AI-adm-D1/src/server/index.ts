@@ -1932,6 +1932,13 @@ app.get("/api/student/books/:bookId/contents", (req, res) => {
   res.json({ contents: repos.contents.findByBookId(book.id) });
 });
 
+app.get("/api/student/books/:bookId/question-bank", (req, res) => {
+  const book = findPublishedBook(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const candidates = repos.oneClickSolve.findStagedCandidatesByBook(book.id);
+  res.json({ candidates });
+});
+
 // ---- Smart Notes (text / ai_answer / canvas) -----------------------------
 // Notes are scoped to a published book and optionally to chapter/page context.
 app.get("/api/student/books/:bookId/notes", (req, res) => {
@@ -2563,6 +2570,129 @@ app.get("/api/admin/books/:bookId/imports/smart-solve/jobs/:jobId", (req, res) =
   const items = repos.smartSolveImports.findItemsByJob(jobId);
   return res.json({ job, items });
 });
+
+app.post("/api/admin/books/:bookId/one-click-solve/jobs", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+
+  const job = repos.oneClickSolve.createJob(bookId);
+
+  // Run asynchronously in the background
+  Promise.resolve().then(async () => {
+    try {
+      repos.oneClickSolve.updateJobStatus(job.id, "processing");
+
+      const contents = repos.contents.findByBookId(bookId);
+
+      const systemPrompt = "You are a teacher preparing choice questions (選擇題) from a book for a study application. " +
+        "You must output ONLY a raw JSON array matching this typescript type:\n" +
+        "Array<{\n" +
+        "  questionType: 'single_choice',\n" +
+        "  question: string,\n" +
+        "  options: Array<{ label: string, text: string }>,\n" +
+        "  answer: string,\n" +
+        "  explanation: string,\n" +
+        "  sourcePage: number,\n" +
+        "  sourceText: string\n" +
+        "}>\n" +
+        "Task marker: one-click-solve. Generate 2 to 5 relevant choice questions based on the book contents.";
+
+      const userPrompt = "Book title: " + book.title + "\n\n" +
+        "Here are the book contents:\n\n" +
+        (contents.length > 0
+          ? contents.map((c) => `[Page ${c.pageNumber}] ${c.contentText}`).join("\n\n")
+          : "(No text content parsed yet for this book. Use the book title/description to generate general choice questions.)") +
+        "\n\nBased on the above, generate choice questions as a JSON array.";
+
+      const responseText = await ai.generateText({
+        system: systemPrompt,
+        prompt: userPrompt
+      });
+
+      // Clean prompt response
+      let cleaned = responseText.trim();
+      if (cleaned.startsWith("```")) {
+        cleaned = cleaned.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "");
+      }
+      cleaned = cleaned.trim();
+
+      const candidatesData = JSON.parse(cleaned);
+      if (Array.isArray(candidatesData)) {
+        const candidateInputs = candidatesData.map((c: any) => {
+          // Check if reliable answer exists
+          const status = (c.answer && c.answer.trim() !== "") ? ("candidate" as const) : ("needs_review" as const);
+          return {
+            jobId: job.id,
+            bookId,
+            questionType: c.questionType || "single_choice",
+            question: c.question || "未填寫題目",
+            options: Array.isArray(c.options) ? c.options : [],
+            answer: c.answer || null,
+            explanation: c.explanation || null,
+            sourcePage: typeof c.sourcePage === "number" ? c.sourcePage : null,
+            sourceText: c.sourceText || null,
+            status
+          };
+        });
+
+        repos.oneClickSolve.createCandidates(candidateInputs);
+      }
+
+      repos.oneClickSolve.updateJobStatus(job.id, "done");
+    } catch (error) {
+      console.error("[one-click-solve] error during extraction:", error);
+      repos.oneClickSolve.updateJobStatus(job.id, "failed");
+    }
+  });
+
+  return res.status(201).json({ job });
+});
+
+app.get("/api/admin/books/:bookId/one-click-solve/jobs", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const jobs = repos.oneClickSolve.findJobsByBook(bookId, 20);
+  return res.json({ jobs });
+});
+
+app.get("/api/admin/books/:bookId/one-click-solve/jobs/:jobId", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const jobId = String(req.params.jobId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const job = repos.oneClickSolve.findJobById(jobId);
+  if (!job || job.bookId !== bookId) return fail(res, 404, "job not found");
+  const candidates = repos.oneClickSolve.findCandidatesByJob(jobId);
+  return res.json({ job, candidates });
+});
+
+app.post("/api/admin/books/:bookId/one-click-solve/jobs/:jobId/stage", (req, res) => {
+  const bookId = String(req.params.bookId);
+  const jobId = String(req.params.jobId);
+  const book = repos.books.findById(bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const job = repos.oneClickSolve.findJobById(jobId);
+  if (!job || job.bookId !== bookId) return fail(res, 404, "job not found");
+
+  const candidateIds = req.body.candidateIds;
+  if (Array.isArray(candidateIds)) {
+    for (const cid of candidateIds) {
+      repos.oneClickSolve.updateCandidateStatus(cid, "staged");
+    }
+  } else {
+    const candidates = repos.oneClickSolve.findCandidatesByJob(jobId);
+    for (const c of candidates) {
+      if (c.status === "candidate" || c.status === "approved" || c.status === "needs_review") {
+        repos.oneClickSolve.updateCandidateStatus(c.id, "staged");
+      }
+    }
+  }
+
+  return res.json({ success: true });
+});
+
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);
 app.listen(port, () => {
