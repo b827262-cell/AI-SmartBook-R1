@@ -29,8 +29,8 @@ export const EXTERNAL_AI_PROVIDERS: readonly ExternalAiProvider[] = [
   {
     id: "google",
     name: "Google",
-    homeUrl: "https://www.google.com",
-    description: "開啟 Google 搜尋頁（請將提示詞貼上對話區）。",
+    homeUrl: "https://google.com/ai",
+    description: "開啟 Google AI，請將提示詞貼上對話區。",
     buttonText: "Google",
     buttonClass: "google"
   },
