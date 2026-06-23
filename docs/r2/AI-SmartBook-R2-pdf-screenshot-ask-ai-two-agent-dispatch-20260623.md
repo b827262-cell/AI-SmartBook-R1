@@ -2,316 +2,97 @@
 
 Date: 2026-06-23
 
-## 1. Purpose
-
-This dispatch splits the PDF Reader `截圖問 AI` feature into two coordinated Agent tasks.
-
-Reference documents:
-
-```text
-docs/r2/AI-SmartBook-R2-pdf-screenshot-ask-ai-feature-task-20260623.md
-docs/r2/AI-SmartBook-R2-pdf-screenshot-ask-ai-external-buttons-addendum-20260623.md
-```
-
 Base branch:
 
 ```text
 feat/r2-integrate-imports-notes
 ```
 
-Final feature branch:
+Base commit:
+
+```text
+d6eb778c8e63dc7be56db1dbf05111dfbeaf4fcd
+```
+
+Final integration branch:
 
 ```text
 feat/r2-pdf-screenshot-ask-ai
 ```
 
-Execution rule:
+## 1. 任務拆分
 
-```text
-GitHub Execution in English.
-Termination report in Traditional Chinese.
-```
+本次任務分為兩位 Agent 並行處理，規避同時改 `BookReaderPage.tsx`，以降低衝突。
 
----
-
-## 2. Important Coordination Rule
-
-The two agents may work in parallel only if they avoid editing the same files.
-
-Recommended safe split:
-
-```text
-Agent 1: Reader UI, screenshot selection, canvas capture, modal shell.
-Agent 2: provider config, clipboard helper, external AI buttons, prompt template support.
-```
-
-Avoid both agents editing `BookReaderPage.tsx` at the same time.
-
-Best sequence:
-
-```text
-1. Agent 1 creates the feature branch and core modal/overlay shell.
-2. Agent 2 branches from Agent 1's pushed branch or works on utility files only.
-3. Codex-Spark or AGY performs final integration and conflict resolution.
-```
+- Agent 1：核心 Reader 截圖流程（Modal 外殼、選取互動、截圖資料流）
+- Agent 2：外部 AI 按鈕與剪貼簿工具（provider 設定、複製行為、prompt 範本）
 
 ---
 
-# 3. Agent 1 — Claude / Core PDF Screenshot Selection
+## 2. 關鍵規則
 
-## 3.1 Suggested model
-
-```text
-Claude
-```
-
-## 3.2 Branch
-
-```text
-feat/r2-pdf-screenshot-ask-ai-core
-```
-
-Base:
-
-```text
-feat/r2-integrate-imports-notes
-```
-
-## 3.3 Responsibility
-
-Agent 1 owns the core Reader workflow:
-
-```text
-1. PDF Reader 新增「截圖問 AI」。
-2. 框選模式。
-3. 橘色框線與四角控制點。
-4. 截取 PDF canvas 區域。
-5. 顯示截圖預覽 modal shell。
-```
-
-Expanded implementation detail:
-
-```text
-- add toolbar entry in the existing Reader flow
-- enter/exit screenshot selection mode cleanly
-- render orange selection rectangle with resize handles
-- support confirm/cancel without destabilizing the Reader
-- capture the selected area from the rendered PDF canvas
-- show a modal shell with the captured image preview
-```
-
-Recommended files:
-
-```text
-apps/AI-Stu-R1/src/pages/BookReaderPage.tsx
-apps/AI-Stu-R1/src/components/PdfScreenshotSelectionOverlay.tsx
-apps/AI-Stu-R1/src/components/PdfScreenshotAskAiModal.tsx
-apps/AI-Stu-R1/src/utils/pdfScreenshot.ts
-apps/AI-Stu-R1/src/styles.css
-```
-
-Agent 1 should not implement the full external AI provider list except a placeholder area for Agent 2.
-
-## 3.4 Agent 1 Prompt
-
-```text
-GitHub Execution in English.
-Termination report in Traditional Chinese.
-
-Please read:
-docs/r2/AI-SmartBook-R2-pdf-screenshot-ask-ai-feature-task-20260623.md
-
-Task:
-Implement the core PDF screenshot selection workflow.
-
-Workspace:
-/home/b827262/project/AI-SmartBook-R2
-
-Base branch:
-feat/r2-integrate-imports-notes
-
-Create branch:
-feat/r2-pdf-screenshot-ask-ai-core
-
-Scope:
-- PDF Reader 新增「截圖問 AI」
-- 框選模式
-- 橘色框線與四角控制點
-- 截取 PDF canvas 區域
-- 顯示截圖預覽 modal shell
-
-Expected supporting behavior:
-- add confirm/cancel controls if needed to complete the screenshot flow
-- keep the Reader stable after close/cancel
-
-Do not implement external provider config in this task.
-Do not add backend upload or DB migration.
-Do not auto-send screenshot data externally.
-
-Validation:
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 typecheck
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 build
-
-Create report:
-docs/r2/AI-SmartBook-R2-pdf-screenshot-ask-ai-core-report-20260623.md
-
-Commit:
-feat(r2): add PDF screenshot ask AI core workflow
-
-Push:
-origin feat/r2-pdf-screenshot-ask-ai-core
-```
+1. 兩個 Agent 不要同時改 `BookReaderPage.tsx`。
+2. Agent 1 先做 core branch。
+3. Agent 2 最好從 Agent 1 的 core branch 再開 buttons branch。
+4. 最後再整合成 `feat/r2-pdf-screenshot-ask-ai`。
+5. 不新增 DB。
+6. 不自動上傳截圖。
+7. 不把 Prompt / 圖片放進 URL。
 
 ---
 
-# 4. Agent 2 — External AI Buttons and Clipboard Tools
+## 3. Agent 1（Core）
 
-## 4.1 Suggested model
+- 建議模型：`Claude`
+- 分支：`feat/r2-pdf-screenshot-ask-ai-core`
+- base：`feat/r2-integrate-imports-notes`
 
-```text
-Codex-Spark 128K or GPT-5.4 Medium/High
-```
+職責：
 
-## 4.2 Branch
-
-Recommended after Agent 1 push:
-
-```text
-feat/r2-pdf-screenshot-ask-ai-buttons
-```
-
-Base:
-
-```text
-feat/r2-pdf-screenshot-ask-ai-core
-```
-
-If Agent 1 is not done yet, Agent 2 may work docs/utility-only from:
-
-```text
-feat/r2-integrate-imports-notes
-```
-
-but should avoid editing `BookReaderPage.tsx`.
-
-## 4.3 Responsibility
-
-Agent 2 owns safe prompt/copy/external button utilities:
-
-```text
-1. AI provider config.
-2. safe open helper.
-3. clipboard helper.
-4. prompt templates.
-5. external AI button rendering inside the modal.
-6. copy prompt / copy image UI behavior.
-7. fallback messages.
-```
-
-Recommended files:
-
-```text
-apps/AI-Stu-R1/src/utils/aiAskProviders.ts
-apps/AI-Stu-R1/src/utils/openExternalAi.ts
-apps/AI-Stu-R1/src/utils/clipboard.ts
-apps/AI-Stu-R1/src/utils/screenshotAskAiPrompts.ts
-apps/AI-Stu-R1/src/components/PdfScreenshotAskAiModal.tsx
-apps/AI-Stu-R1/src/styles.css
-```
-
-Agent 2 should not change PDF canvas selection logic unless absolutely necessary.
-
-## 4.4 Agent 2 Prompt
-
-```text
-GitHub Execution in English.
-Termination report in Traditional Chinese.
-
-Please read:
-docs/r2/AI-SmartBook-R2-pdf-screenshot-ask-ai-external-buttons-addendum-20260623.md
-
-Task:
-Implement the safe external AI buttons, clipboard helpers, and prompt templates for the PDF Screenshot Ask AI modal.
-
-Workspace:
-/home/b827262/project/AI-SmartBook-R2
-
-Preferred base branch:
-feat/r2-pdf-screenshot-ask-ai-core
-
-Create branch:
-feat/r2-pdf-screenshot-ask-ai-buttons
-
-Scope:
-- provider config
-- open external AI helper
-- copy prompt helper
-- copy image helper with browser fallback
-- prompt templates
-- modal provider buttons
-
-Safety rules:
-- Do not auto-upload screenshots.
-- Do not put prompt/image content into URL query strings.
-- Only open new tabs after explicit user click.
-- Do not add backend upload or DB migration.
-- Avoid editing BookReaderPage.tsx unless integration requires it.
-
-Validation:
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 typecheck
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 build
-
-Create report:
-docs/r2/AI-SmartBook-R2-pdf-screenshot-ask-ai-buttons-report-20260623.md
-
-Commit:
-feat(r2): add screenshot ask AI provider buttons
-
-Push:
-origin feat/r2-pdf-screenshot-ask-ai-buttons
-```
+1. PDF Reader 新增「截圖問 AI」
+2. 框選模式
+3. 橘色框線與四角控制點
+4. 截取 PDF canvas 區域
+5. 顯示截圖預覽 modal shell
 
 ---
 
-# 5. Final Integration Step
+## 4. Agent 2（Buttons）
 
-After both agents finish, a third short integration pass should merge:
+- 指定模型：`Codex-Spark` / `GPT-5.4`
+- 分支：`feat/r2-pdf-screenshot-ask-ai-buttons`
+- base：建議 `feat/r2-pdf-screenshot-ask-ai-core`（未完成時可先在 `feat/r2-integrate-imports-notes` 作為工具文件/輔助開發）
 
-```text
-feat/r2-pdf-screenshot-ask-ai-core
-feat/r2-pdf-screenshot-ask-ai-buttons
-```
+職責（固定）：
 
-into final branch:
-
-```text
-feat/r2-pdf-screenshot-ask-ai
-```
-
-Run:
-
-```text
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 typecheck
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 build
-PNPM_HOME=/tmp/pnpm pnpm --filter AI-adm-D1 build
-```
-
-Create final report:
-
-```text
-docs/r2/AI-SmartBook-R2-pdf-screenshot-ask-ai-implementation-report-20260623.md
-```
+1. AI provider config
+2. `openExternalAi` helper
+3. copy prompt helper
+4. copy image helper
+5. prompt templates
+6. modal 內 Google / ChatGPT / Claude / Gemini 等按鈕
 
 ---
 
-## 6. Recommendation
+## 5. 安全要求（Agent 2）
 
-Best practical assignment:
+- 不要新增 DB。
+- 不自動上傳截圖。
+- 不要將 prompt/image 放在 URL query string。
+- 僅在用戶主動點擊時才開啟外部頁籤。
+- 不在未必要時修改 `BookReaderPage.tsx`。
 
-```text
-Agent 1 / Claude: core Reader screenshot selection and modal shell.
-Agent 2 / Codex-Spark: provider buttons, clipboard helpers, prompt templates, typecheck fixes.
-AGY later: visual/RWD/manual screenshot acceptance.
-```
+---
 
-Do not merge into `feat/r2-integrate-imports-notes` until final typecheck/build and manual Reader test pass.
+## 6. 驗證與整合（建議）
+
+- `PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 typecheck`
+- `PNPM_HOME=/tmp/pnpm pnpm --filter AI-Stu-R1 build`
+- `PNPM_HOME=/tmp/pnpm pnpm --filter AI-adm-D1 build`
+
+整合順序：
+
+1. Agent 1 完成 core branch 並推上遠端
+2. Agent 2 從 Agent 1 分支建立 buttons 分支並實作
+3. 將 core + buttons 合併到 `feat/r2-pdf-screenshot-ask-ai`
+4. 完成最終 acceptance 驗證
