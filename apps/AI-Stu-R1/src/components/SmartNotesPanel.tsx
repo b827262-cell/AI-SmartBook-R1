@@ -113,7 +113,8 @@ export function SmartNotesPanel({
   chapterTitle,
   refreshKey = 0,
   compact = false,
-  onCollapse
+  onCollapse,
+  onNavigate
 }: {
   bookId: string;
   pageNumber: number | null;
@@ -122,6 +123,7 @@ export function SmartNotesPanel({
   refreshKey?: number;
   compact?: boolean;
   onCollapse?: () => void;
+  onNavigate?: (note: SmartBookNote) => void;
 }) {
   const [notes, setNotes] = useState<SmartBookNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -354,6 +356,17 @@ export function SmartNotesPanel({
                 <div className="notes-item-head">
                   <span className={`notes-type-badge ${note.type}`}>{TYPE_LABEL[note.type]}</span>
                   <span className="muted notes-item-ctx">{contextLabel(note)}</span>
+                  {onNavigate && (note.pageNumber != null || note.chapterId != null) && (
+                    <button
+                      type="button"
+                      className="notes-btn small notes-nav-btn"
+                      title={note.pageNumber != null ? `跳至第 ${note.pageNumber} 頁` : "跳至章節"}
+                      onClick={() => onNavigate(note)}
+                      disabled={busy}
+                    >
+                      定位
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="notes-btn small"

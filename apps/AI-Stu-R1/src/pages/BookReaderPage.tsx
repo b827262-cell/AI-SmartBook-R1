@@ -8,7 +8,7 @@ import {
   type PointerEvent
 } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { BookChapter, ReaderOutlineNode, ReaderOutlineSource } from "@ai-smartbook/schema";
+import type { BookChapter, ReaderOutlineNode, ReaderOutlineSource, SmartBookNote } from "@ai-smartbook/schema";
 import { studentClient, type BookDetail } from "../studentClient";
 import type { StudentBook } from "../bookDisplay";
 import { ReaderTopBar } from "../components/ReaderTopBar";
@@ -783,6 +783,36 @@ export function BookReaderPage() {
     setPdfPage(clamped);
   }
 
+  function handleNoteNavigate(note: SmartBookNote) {
+    if (note.pageNumber != null) {
+      jumpToPage(note.pageNumber);
+      if (isMobile) setMobilePanel(null);
+    } else if (note.chapterId) {
+      const chapter = chapters.find((c) => c.id === note.chapterId);
+      if (chapter?.pageStart != null) {
+        jumpToPage(chapter.pageStart);
+        if (isMobile) setMobilePanel(null);
+      } else {
+        setMobileNoticeMessage("此筆記的章節無法定位（缺少頁碼）");
+      }
+    }
+  }
+
+  function handleNoteNavigate(note: SmartBookNote) {
+    if (note.pageNumber != null) {
+      jumpToPage(note.pageNumber);
+      if (isMobile) setMobilePanel(null);
+    } else if (note.chapterId) {
+      const chapter = chapters.find((c) => c.id === note.chapterId);
+      if (chapter?.pageStart != null) {
+        jumpToPage(chapter.pageStart);
+        if (isMobile) setMobilePanel(null);
+      } else {
+        setMobileNoticeMessage("此筆記的章節無法定位（缺少頁碼）");
+      }
+    }
+  }
+
   function applyMobilePageJump() {
     const raw = mobilePageInput.trim();
     if (!raw) {
@@ -1222,6 +1252,7 @@ export function BookReaderPage() {
                     refreshKey={notesRefreshKey}
                     compact
                     onCollapse={() => setRightPanel(null)}
+                    onNavigate={handleNoteNavigate}
                   />
                 </div>
               )}
@@ -1312,6 +1343,7 @@ export function BookReaderPage() {
                       chapterTitle={activeChapterTitle}
                       refreshKey={notesRefreshKey}
                       compact
+                      onNavigate={handleNoteNavigate}
                     />
                   </div>
                 </aside>
