@@ -798,21 +798,6 @@ export function BookReaderPage() {
     }
   }
 
-  function handleNoteNavigate(note: SmartBookNote) {
-    if (note.pageNumber != null) {
-      jumpToPage(note.pageNumber);
-      if (isMobile) setMobilePanel(null);
-    } else if (note.chapterId) {
-      const chapter = chapters.find((c) => c.id === note.chapterId);
-      if (chapter?.pageStart != null) {
-        jumpToPage(chapter.pageStart);
-        if (isMobile) setMobilePanel(null);
-      } else {
-        setMobileNoticeMessage("此筆記的章節無法定位（缺少頁碼）");
-      }
-    }
-  }
-
   function applyMobilePageJump() {
     const raw = mobilePageInput.trim();
     if (!raw) {
