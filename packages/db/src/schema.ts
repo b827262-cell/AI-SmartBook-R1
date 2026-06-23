@@ -145,6 +145,18 @@ export const smartBookNotes = sqliteTable("smart_book_notes", {
   updatedAt: text("updated_at").notNull()
 });
 
+export const questionBankImportJobs = sqliteTable("question_bank_import_jobs", {
+  id: text("id").primaryKey(),
+  fileName: text("file_name").notNull(),
+  status: text("status").notNull().default("pending"),
+  totalRecords: integer("total_records").notNull().default(0),
+  validRecords: integer("valid_records").notNull().default(0),
+  invalidRecords: integer("invalid_records").notNull().default(0),
+  resultJson: text("result_json"),
+  errorMessage: text("error_message"),
+  createdAt: text("created_at").notNull()
+});
+
 export type DbSchema = {
   books: typeof books;
   bookFiles: typeof bookFiles;
@@ -157,6 +169,7 @@ export type DbSchema = {
   bookQaLogs: typeof bookQaLogs;
   appSettings: typeof appSettings;
   smartBookNotes: typeof smartBookNotes;
+  questionBankImportJobs: typeof questionBankImportJobs;
 };
 
 export const schema = {
@@ -170,5 +183,6 @@ export const schema = {
   bookAiJobs,
   bookQaLogs,
   appSettings,
-  smartBookNotes
+  smartBookNotes,
+  questionBankImportJobs
 };

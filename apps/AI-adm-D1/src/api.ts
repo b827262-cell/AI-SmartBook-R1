@@ -16,7 +16,9 @@ import type {
   PdfJsonIndex,
   StoredJsonIndexSummary,
   CreateBookInput,
-  UpdateBookInput
+  UpdateBookInput,
+  QuestionBankImportJob,
+  QuestionBankImportResult
 } from "@ai-smartbook/schema";
 
 export interface ChapterInput {
@@ -318,7 +320,22 @@ export const adminApi = {
       method: "POST",
       body: form
     });
-  }
+  },
+
+  importQuestionBankJson: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return http<{ job: QuestionBankImportJob; errors: { index: number; message: string }[] }>(
+      "/api/admin/import/question-bank/jobs",
+      { method: "POST", body: form }
+    );
+  },
+
+  listQuestionBankImportJobs: () =>
+    http<{ jobs: QuestionBankImportJob[] }>("/api/admin/import/question-bank/jobs"),
+
+  getQuestionBankImportJob: (jobId: string) =>
+    http<{ job: QuestionBankImportJob }>(`/api/admin/import/question-bank/jobs/${jobId}`)
 };
 
 export type DashboardRange = "week" | "month" | "all";
