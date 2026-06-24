@@ -2,7 +2,7 @@
 
 - 任務日誌：2026-06-24
 - 分支：`feat/r2-admin-appearance-image-folder-import-impl`
-- Commit（最終）：`1ce0b55a`
+- Commit（最終）：`967128a2`
 
 ## 狀態
 - success: 已完成後台 `介面設定` 的「ICO / 圖片設定」欄位擴充與固定檔名批次匯入流程。
@@ -53,7 +53,7 @@
 - `PNPM_HOME=/tmp/pnpm pnpm --filter AI-adm-D1 build`：pass
 - `PNPM_HOME=/tmp/pnpm pnpm --filter @ai-smartbook/schema typecheck`：pass
 - 手動 UI 驗證：
-  - 未啟動真實瀏覽器進行互動錄影；完成欄位與邏輯邏輯檢核於 code review + typecheck/build。
+  - 未啟動真實瀏覽器進行互動錄影；完成欄位與邏輯檢核於 code review + typecheck/build。
 
 ## git status --short
 - 目前可見變更：
