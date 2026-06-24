@@ -104,6 +104,12 @@ export function GoogleAiSettingsCard() {
   const aiStatusLine = status?.hasGoogleApiKey
     ? "AI 狀態：🟢 Google API Key 已提供"
     : "AI 狀態：🔴 未提供 Google API Key";
+  const sourceText =
+    status?.googleApiKeySource === "user"
+      ? "來源：後台已儲存 Key"
+      : status?.googleApiKeySource === "env"
+        ? "來源：環境變數 Key"
+        : "來源：無";
 
   const testStatusText =
     status?.lastTestStatus === "success"
@@ -134,6 +140,7 @@ export function GoogleAiSettingsCard() {
         {status?.hasGoogleApiKey && status.maskedGoogleApiKey && (
           <div style={{ color: "#6b7280", marginTop: 2 }}>Key：{status.maskedGoogleApiKey}</div>
         )}
+        <div style={{ color: "#6b7280", marginTop: 2 }}>{sourceText}</div>
         <div style={{ color: "#6b7280", marginTop: 2 }}>連線測試：{testStatusText}</div>
       </div>
 
@@ -168,6 +175,7 @@ export function GoogleAiSettingsCard() {
           <select
             value={defaultModel}
             onChange={(e) => setDefaultModel(e.target.value)}
+            disabled={!status?.hasGoogleApiKey}
             style={{
               width: "100%",
               padding: "9px 10px",
@@ -191,6 +199,7 @@ export function GoogleAiSettingsCard() {
           <select
             value={defaultEmbeddingModel}
             onChange={(e) => setDefaultEmbeddingModel(e.target.value)}
+            disabled={!status?.hasGoogleApiKey}
             style={{
               width: "100%",
               padding: "9px 10px",

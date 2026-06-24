@@ -63,6 +63,25 @@ export function makeQaLogRepo(db: Db) {
         )
         .orderBy(desc(bookQaLogs.createdAt))
         .all();
+    },
+
+    deleteByBookIdAndSource(bookId: string, provider: string, model: string): number {
+      const rows = db
+        .select({ id: bookQaLogs.id })
+        .from(bookQaLogs)
+        .where(
+          and(
+            eq(bookQaLogs.bookId, bookId),
+            eq(bookQaLogs.provider, provider),
+            eq(bookQaLogs.model, model)
+          )
+        )
+        .all();
+      if (rows.length === 0) return 0;
+      for (const row of rows) {
+        db.delete(bookQaLogs).where(eq(bookQaLogs.id, row.id)).run();
+      }
+      return rows.length;
     }
   };
 }

@@ -45,6 +45,11 @@ export function makeAiJobRepo(db: Db) {
       return row ? toJob(row) : null;
     },
 
+    findById(id: string): BookAiJob | null {
+      const row = db.select().from(bookAiJobs).where(eq(bookAiJobs.id, id)).get();
+      return row ? toJob(row) : null;
+    },
+
     findByBookId(bookId: string): BookAiJob[] {
       return db
         .select()

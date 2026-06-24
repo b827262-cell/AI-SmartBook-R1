@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type {
   CreateSmartBookNoteInput,
   SmartBookNote,
@@ -75,6 +75,20 @@ export function makeSmartBookNoteRepo(db: Db) {
 
     delete(id: string): void {
       db.delete(smartBookNotes).where(eq(smartBookNotes.id, id)).run();
+    },
+
+    deleteByBookIdAndTypeAndSourcePrefix(bookId: string, type: SmartBookNoteType, sourcePrefix: string): number {
+      const rows = db
+        .select({ id: smartBookNotes.id, sourceMessageId: smartBookNotes.sourceMessageId })
+        .from(smartBookNotes)
+        .where(and(eq(smartBookNotes.bookId, bookId), eq(smartBookNotes.type, type)))
+        .all()
+        .filter((row) => row.sourceMessageId?.startsWith(sourcePrefix) ?? false);
+      if (rows.length === 0) return 0;
+      for (const row of rows) {
+        db.delete(smartBookNotes).where(eq(smartBookNotes.id, row.id)).run();
+      }
+      return rows.length;
     }
   };
 }

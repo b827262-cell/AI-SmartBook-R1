@@ -438,12 +438,34 @@ export interface AdminSmartBookNote extends SmartBookNote {
 export type AiProviderStatus = {
   provider: string;
   hasGoogleApiKey: boolean;
+  googleApiKeySource: "user" | "env" | "none";
   maskedGoogleApiKey: string | null;
   defaultModel: string;
   defaultEmbeddingModel: string;
   lastTestStatus: "not_tested" | "success" | "failed";
   lastTestedAt: string | null;
 };
+
+export type OneClickWorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed";
+
+export interface OneClickWorkflowStep {
+  key: string;
+  label: string;
+  status: OneClickWorkflowStepStatus;
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface OneClickWorkflowState {
+  bookId: string;
+  selectedModel: string;
+  startedAt: string;
+  finishedAt: string | null;
+  summary: string;
+  canUseAi: boolean;
+  steps: OneClickWorkflowStep[];
+}
 
 export function getAiProviderSettings(): Promise<AiProviderStatus> {
   return http<AiProviderStatus>("/api/admin/settings/ai-provider");
@@ -466,4 +488,17 @@ export function clearGoogleApiKey(): Promise<{ hasGoogleApiKey: boolean }> {
 
 export function testAiConnection(): Promise<{ ok: boolean; message: string }> {
   return http<{ ok: boolean; message: string }>("/api/admin/settings/ai-provider/test", { method: "POST" });
+}
+
+export function startOneClickWorkflow(bookId: string, selectedModel: string) {
+  return http<{ job: BookAiJob; workflow: OneClickWorkflowState }>(
+    `/api/admin/books/${bookId}/one-click-workflow`,
+    { method: "POST", body: JSON.stringify({ selectedModel }) }
+  );
+}
+
+export function getLatestOneClickWorkflow(bookId: string) {
+  return http<{ job: BookAiJob | null; workflow: OneClickWorkflowState | null }>(
+    `/api/admin/books/${bookId}/one-click-workflow`
+  );
 }

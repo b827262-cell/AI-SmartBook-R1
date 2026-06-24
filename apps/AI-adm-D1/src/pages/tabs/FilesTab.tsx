@@ -14,8 +14,11 @@ import {
   getAiProviderSettings,
   type AiProviderStatus,
   type GenerateReaderTocResponse,
+  type OneClickWorkflowState,
   type ReaderTocImportPayload,
-  type ReaderTocResponse
+  type ReaderTocResponse,
+  getLatestOneClickWorkflow,
+  startOneClickWorkflow
 } from "../../api";
 
 const ENTRY_TYPE_OPTIONS: ChapterPreviewEntryType[] = [
@@ -252,7 +255,8 @@ export function FilesTab({ bookId }: { bookId: string }) {
   const [tocPageEnd, setTocPageEnd] = useState("6");
   const [genTocResult, setGenTocResult] = useState<GenerateReaderTocResponse | null>(null);
   const [aiStatus, setAiStatus] = useState<AiProviderStatus | null>(null);
-  const [oneClickMsg, setOneClickMsg] = useState("");
+  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [workflow, setWorkflow] = useState<OneClickWorkflowState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const jsonUploadRef = useRef<HTMLInputElement>(null);
   const previewSectionRef = useRef<HTMLDivElement>(null);
@@ -260,20 +264,38 @@ export function FilesTab({ bookId }: { bookId: string }) {
   const readerTocSectionRef = useRef<HTMLDivElement>(null);
 
   async function reload() {
-    const [data, idx, toc] = await Promise.all([
+    const [data, idx, toc, workflowResult] = await Promise.all([
       adminApi.getBook(bookId),
       adminApi.listJsonIndexes(bookId),
-      adminApi.getReaderToc(bookId)
+      adminApi.getReaderToc(bookId),
+      getLatestOneClickWorkflow(bookId)
     ]);
     setFiles(data.files);
     setJsonIndexes(idx.indexes);
     setReaderToc(toc);
+    setWorkflow(workflowResult.workflow);
+  }
+
+  async function refreshAiStatus() {
+    const status = await getAiProviderSettings();
+    setAiStatus(status);
+    setSelectedModel(status.defaultModel);
   }
 
   useEffect(() => {
     void reload().catch((e) => setError(e instanceof Error ? e.message : String(e)));
-    void getAiProviderSettings().then(setAiStatus).catch(() => null);
+    void refreshAiStatus().catch(() => null);
   }, [bookId]);
+
+  useEffect(() => {
+    if (!workflow || workflow.finishedAt) return;
+    const timer = window.setInterval(() => {
+      void getLatestOneClickWorkflow(bookId)
+        .then((result) => setWorkflow(result.workflow))
+        .catch(() => null);
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [bookId, workflow]);
 
   const previewFile = previewFileId ? files.find((file) => file.id === previewFileId) ?? null : null;
   // The main table lists PDF sources / reference images; stored JSON indexes are
@@ -589,13 +611,14 @@ export function FilesTab({ bookId }: { bookId: string }) {
   }
 
   const hasAiKey = aiStatus?.hasGoogleApiKey ?? false;
+  const workflowRunning = workflow != null && workflow.finishedAt == null;
 
-  function handleOneClick() {
-    if (!hasAiKey) {
-      setOneClickMsg("已完成非 AI 流程；AI 建立 Q&A 與 AI 萃取知識點因未提供 Google API Key 而略過。");
-    } else {
-      setOneClickMsg(`一鍵完成執行中（預設模型：${aiStatus?.defaultModel ?? "—"}）— 拆書 → 建立章節（首面 1 ～ 末面 589）→ AI 建立 Q&A → AI 萃取知識點`);
-    }
+  async function handleOneClick() {
+    await run(async () => {
+      const result = await startOneClickWorkflow(bookId, selectedModel);
+      setWorkflow(result.workflow);
+      setMsg(hasAiKey ? `一鍵流程已啟動，模型：${selectedModel}` : "一鍵流程已啟動，AI 步驟將略過。");
+    });
   }
 
   return (
@@ -621,15 +644,25 @@ export function FilesTab({ bookId }: { bookId: string }) {
               {hasAiKey && aiStatus?.defaultModel && (
                 <div style={{ color: "#6b7280", marginTop: 2 }}>預設模型：{aiStatus.defaultModel}</div>
               )}
+              {aiStatus && (
+                <div style={{ color: "#6b7280", marginTop: 2 }}>
+                  Key 來源：
+                  {aiStatus.googleApiKeySource === "user"
+                    ? "後台已儲存"
+                    : aiStatus.googleApiKeySource === "env"
+                      ? "環境變數"
+                      : "無"}
+                </div>
+              )}
               {!hasAiKey && (
                 <div style={{ color: "#6b7280", marginTop: 4, fontSize: 12 }}>
-                  可執行：拆書、建立章節、建立基礎知識點<br />
+                  可執行：PDF 檢查、Reader TOC、建立章節、Published 同步<br />
                   略過：AI 建立 Q&amp;A、AI 萃取知識點、截圖問 AI
                 </div>
               )}
               {hasAiKey && (
                 <div style={{ color: "#6b7280", marginTop: 4, fontSize: 12 }}>
-                  可執行：拆書、建立章節、AI 建立 Q&amp;A、AI 建立知識點
+                  可執行：PDF 檢查、AI 建立 Q&amp;A、AI 建立知識點、Reader TOC、Published 同步、建立章節
                 </div>
               )}
             </div>
@@ -637,15 +670,64 @@ export function FilesTab({ bookId }: { bookId: string }) {
           <div style={{ flex: 1, minWidth: 240 }}>
             <h3 style={{ marginTop: 0, marginBottom: 8 }}>一鍵完成</h3>
             <p className="muted" style={{ margin: "0 0 10px 0", fontSize: 13 }}>
-              拆書（預設頂級）→ 建立章節（首面 1 ～ 末面 589）→ 建立 Q&amp;A → 建立知識點
+              PDF 檢查 → AI 設定檢查 → 建立 Q&amp;A → 建立知識點 → 同步後台 / 學生端 → Reader TOC → 建立章節
               {!hasAiKey && "（AI 步驟略過）"}
             </p>
-            <button className="btn" onClick={handleOneClick} disabled={busy}>
-              一鍵完成
-            </button>
-            {oneClickMsg && (
-              <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>{oneClickMsg}</p>
-            )}
+            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={!hasAiKey || busy || workflowRunning}
+              >
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+                <option value="gemma-4-31b">Gemma 4 31B</option>
+                <option value="gemma-4-26b">Gemma 4 26B</option>
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                <option value="gemini-3-flash">Gemini 3 Flash</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+              </select>
+              <button className="btn" onClick={() => void handleOneClick()} disabled={busy || workflowRunning}>
+                {workflowRunning ? "執行中…" : "一鍵完成"}
+              </button>
+            </div>
+            {workflow ? (
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 13,
+                  background: "#fafafa"
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                  {workflow.finishedAt ? "最近一次流程結果" : "工作流執行中"}
+                </div>
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  模型：{workflow.selectedModel}｜摘要：{workflow.summary}
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {workflow.steps.map((step) => (
+                    <div key={step.key}>
+                      <strong>
+                        {step.status === "success"
+                          ? "🟢"
+                          : step.status === "failed"
+                            ? "🔴"
+                            : step.status === "skipped"
+                              ? "⚪"
+                              : step.status === "running"
+                                ? "🟡"
+                                : "⚫"}{" "}
+                        {step.label}
+                      </strong>
+                      <div className="muted">{step.message || "等待執行"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

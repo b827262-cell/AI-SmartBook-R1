@@ -1,6 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getAiSettings, saveAiSettings, clearGoogleApiKey, testAiConnection } from "./ai-settings-store.js";
+import {
+  getAiSettings,
+  saveAiSettings,
+  clearGoogleApiKey,
+  testAiConnection,
+  getRawGoogleApiKey
+} from "./ai-settings-store.js";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
 import { getDb, createRepositories, runMigrations, resolveDbPath } from "@ai-smartbook/db";
@@ -22,6 +28,7 @@ import {
   linkChaptersByPageRange,
   summarizeChapter,
   askBookQuestion,
+  extractJson,
   type BookCoreContext
 } from "@ai-smartbook/book-core";
 import {
@@ -70,14 +77,135 @@ const { db, sqlite } = getDb();
 // `db:migrate` (it just yields an empty book list until you seed).
 runMigrations(sqlite);
 const repos = createRepositories(db);
-const ai = createAiProvider();
-const ctx: BookCoreContext = { repos, ai };
+const ctx: BookCoreContext = { repos, ai: createAiProvider() };
 
 const UPLOAD_ROOT = resolve(process.env.UPLOAD_DIR || "./uploads/books");
 const JSON_INDEX_ROLE = "json_index" as const;
 const READER_TOC_ROLE = "reader_toc" as const;
 const READER_TOC_SCHEMA_VERSION = "smartbook-reader-toc-v1";
 const READER_TOC_SOURCE = "manual_admin_import" as const;
+const ONE_CLICK_QA_PROVIDER = "one_click_workflow";
+const ONE_CLICK_QA_MODEL = "qa_batch_v1";
+const ONE_CLICK_NOTE_SOURCE = "one-click-knowledge-point:";
+
+type WorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed";
+type WorkflowStepKey =
+  | "check_pdf"
+  | "check_ai_config"
+  | "create_qa"
+  | "create_knowledge_points"
+  | "sync_knowledge_points_admin"
+  | "sync_student_publish"
+  | "generate_reader_toc"
+  | "build_chapters";
+
+type WorkflowStepState = {
+  key: WorkflowStepKey;
+  label: string;
+  status: WorkflowStepStatus;
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+type OneClickWorkflowState = {
+  bookId: string;
+  selectedModel: string;
+  startedAt: string;
+  finishedAt: string | null;
+  summary: string;
+  canUseAi: boolean;
+  steps: WorkflowStepState[];
+};
+
+const WORKFLOW_STEP_LABELS: Record<WorkflowStepKey, string> = {
+  check_pdf: "1. 檢查 PDF 與內容基礎",
+  check_ai_config: "2. 檢查 Google AI 設定",
+  create_qa: "3. 建立 Q&A",
+  create_knowledge_points: "4. 建立知識點",
+  sync_knowledge_points_admin: "5. 同步知識點到後台",
+  sync_student_publish: "6. 同步到學生前台 / Published",
+  generate_reader_toc: "7. 產生 Reader TOC",
+  build_chapters: "8. 建立章節"
+};
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+async function createBookCoreContext(modelOverride?: string): Promise<BookCoreContext> {
+  const key = await getRawGoogleApiKey();
+  const settings = await getAiSettings();
+  const model = modelOverride || settings.defaultModel;
+  const ai = key
+    ? createAiProvider({ provider: "gemini", model, geminiApiKey: key })
+    : createAiProvider({ provider: "mock", model });
+  return { repos, ai };
+}
+
+function createWorkflowState(bookId: string, selectedModel: string, canUseAi: boolean): OneClickWorkflowState {
+  return {
+    bookId,
+    selectedModel,
+    startedAt: nowIso(),
+    finishedAt: null,
+    summary: "工作流已建立，等待執行。",
+    canUseAi,
+    steps: (Object.keys(WORKFLOW_STEP_LABELS) as WorkflowStepKey[]).map((key) => ({
+      key,
+      label: WORKFLOW_STEP_LABELS[key],
+      status: "pending",
+      message: "",
+      startedAt: null,
+      finishedAt: null
+    }))
+  };
+}
+
+function updateWorkflowStepState(
+  state: OneClickWorkflowState,
+  key: WorkflowStepKey,
+  status: WorkflowStepStatus,
+  message: string
+): OneClickWorkflowState {
+  const ts = nowIso();
+  return {
+    ...state,
+    steps: state.steps.map((step) =>
+      step.key !== key
+        ? step
+        : {
+            ...step,
+            status,
+            message,
+            startedAt: step.startedAt ?? ts,
+            finishedAt: status === "running" ? null : ts
+          }
+    ),
+    summary: message || state.summary
+  };
+}
+
+function saveWorkflowState(jobId: string, state: OneClickWorkflowState, status: "running" | "success" | "failed") {
+  repos.aiJobs.update(jobId, {
+    status,
+    outputJson: JSON.stringify(state),
+    errorMessage: status === "failed" ? state.summary : null
+  });
+}
+
+function readWorkflowState(job: BookAiJob | null): OneClickWorkflowState | null {
+  if (!job?.outputJson) return null;
+  try {
+    return JSON.parse(job.outputJson) as OneClickWorkflowState;
+  } catch {
+    return null;
+  }
+}
+
+function findLatestOneClickWorkflowJob(bookId: string): BookAiJob | null {
+  return repos.aiJobs.findByBookId(bookId).find((job) => job.jobType === "one_click_workflow") ?? null;
+}
 
 function decodeUploadFileName(name: string): string {
   try {
@@ -936,6 +1064,122 @@ function findPrimaryPdfSourceFile(bookId: string): BookFile | null {
   );
 }
 
+function collectBookContextSnippets(bookId: string, limit: number): string[] {
+  return repos.contents
+    .findByBookId(bookId)
+    .slice(0, limit)
+    .map((content) => {
+      const page = content.pageNumber != null ? `p.${content.pageNumber}` : "p.?";
+      return `[${page}] ${content.contentText}`;
+    });
+}
+
+type WorkflowQaDraft = {
+  question: string;
+  answer: string;
+  pageNumber?: number | null;
+};
+
+type WorkflowKnowledgePointDraft = {
+  title: string;
+  content: string;
+  pageNumber?: number | null;
+};
+
+async function generateWorkflowQaDrafts(
+  book: Book,
+  selectedModel: string
+): Promise<WorkflowQaDraft[]> {
+  const aiCtx = await createBookCoreContext(selectedModel);
+  const snippets = collectBookContextSnippets(book.id, 10);
+  const prompt = {
+    prompt: [
+      "你是教材編輯。請根據以下書籍片段，產生 3 組 JSON 問答。",
+      '輸出格式必須是 JSON array，每筆為 {"question":"", "answer":"", "pageNumber":1}。',
+      "問題要具體，答案只能根據提供內容整理，不要幻想。",
+      `書名：${book.title}`,
+      "內容片段：",
+      snippets.join("\n\n")
+    ].join("\n")
+  };
+  const raw = await aiCtx.ai.generateText(prompt);
+  const parsed = extractJson<WorkflowQaDraft[]>(raw) ?? [];
+  return parsed
+    .filter((item) => item && item.question?.trim() && item.answer?.trim())
+    .slice(0, 3)
+    .map((item) => ({
+      question: item.question.trim(),
+      answer: item.answer.trim(),
+      pageNumber: typeof item.pageNumber === "number" ? item.pageNumber : null
+    }));
+}
+
+async function generateWorkflowKnowledgePointDrafts(
+  book: Book,
+  selectedModel: string
+): Promise<WorkflowKnowledgePointDraft[]> {
+  const aiCtx = await createBookCoreContext(selectedModel);
+  const snippets = collectBookContextSnippets(book.id, 12);
+  const prompt = {
+    prompt: [
+      "你是教材編輯。請根據以下書籍片段，整理 5 個知識點。",
+      '輸出格式必須是 JSON array，每筆為 {"title":"", "content":"", "pageNumber":1}。',
+      "title 要短，content 用 1-2 句說明，不要輸出 markdown。",
+      `書名：${book.title}`,
+      "內容片段：",
+      snippets.join("\n\n")
+    ].join("\n")
+  };
+  const raw = await aiCtx.ai.generateText(prompt);
+  const parsed = extractJson<WorkflowKnowledgePointDraft[]>(raw) ?? [];
+  return parsed
+    .filter((item) => item && item.title?.trim() && item.content?.trim())
+    .slice(0, 5)
+    .map((item) => ({
+      title: item.title.trim(),
+      content: item.content.trim(),
+      pageNumber: typeof item.pageNumber === "number" ? item.pageNumber : null
+    }));
+}
+
+function storeGeneratedReaderTocFromIndex(
+  book: Book,
+  indexFile: BookFile,
+  outline: ReaderOutlineNode[]
+): {
+  fileId: string;
+  fileName: string;
+  createdAt: string;
+  itemCount: number;
+} {
+  const file = {
+    schemaVersion: READER_TOC_SCHEMA_VERSION,
+    bookId: book.id,
+    source: READER_TOC_SOURCE,
+    items: toReaderTocInputNodes(outline)
+  };
+  const path = writeReaderTocArtifact(book.id, file);
+  for (const candidate of repos.files.findByBookId(book.id).filter((f) => f.role === READER_TOC_ROLE)) {
+    deleteStoredBookFile(candidate);
+  }
+  const record = repos.files.create({
+    bookId: book.id,
+    fileName: `${READER_TOC_SOURCE}-${Date.now()}.json`,
+    filePath: path,
+    fileType: "application/json",
+    fileSize: Buffer.byteLength(JSON.stringify(file), "utf8"),
+    role: READER_TOC_ROLE,
+    relatedFileId: indexFile.id,
+    parseStatus: "parsed"
+  });
+  return {
+    fileId: record.id,
+    fileName: record.fileName,
+    createdAt: record.createdAt,
+    itemCount: summarizeReaderToc(outline).itemCount
+  };
+}
+
 function resolveStudentSessionId(req: Request): string | null {
   const fromHeader = headerValue(req, "x-student-session-id").trim();
   if (fromHeader) return fromHeader;
@@ -1075,6 +1319,189 @@ async function runJob<T>(
       errorMessage: err instanceof Error ? err.message : String(err)
     });
     throw err;
+  }
+}
+
+async function runOneClickWorkflow(jobId: string, book: Book, selectedModel: string): Promise<void> {
+  const aiSettings = await getAiSettings();
+  let state = createWorkflowState(book.id, selectedModel, aiSettings.hasGoogleApiKey);
+  saveWorkflowState(jobId, state, "running");
+
+  const pdfFile = findPrimaryPdfSourceFile(book.id);
+  if (!pdfFile) {
+    state = updateWorkflowStepState(state, "check_pdf", "failed", "找不到 PDF source_document。");
+    state.finishedAt = nowIso();
+    saveWorkflowState(jobId, state, "failed");
+    return;
+  }
+
+  try {
+    state = updateWorkflowStepState(state, "check_pdf", "running", `檢查 PDF：${pdfFile.fileName}`);
+    saveWorkflowState(jobId, state, "running");
+
+    const parsed = await replaceParsedContentsForFile(pdfFile);
+    const indexLevel = "sentence" as const;
+    const jsonIndex = buildPdfJsonIndex({
+      bookId: book.id,
+      fileId: pdfFile.id,
+      fileName: pdfFile.fileName,
+      level: indexLevel,
+      pageCount: parsed.pageCount,
+      contents: repos.contents.findByBookId(book.id),
+      chapters: repos.chapters.findByBookId(book.id)
+    });
+    const indexBaseName = `${pdfFile.fileName.replace(/\.pdf$/i, "")}-${indexLevel}-index`;
+    const indexPath = writeJsonIndexArtifact(book.id, indexBaseName, jsonIndex);
+    const indexRecord = repos.files.create({
+      bookId: book.id,
+      fileName: `${indexBaseName}.json`,
+      filePath: indexPath,
+      fileType: "application/json",
+      fileSize: Buffer.byteLength(JSON.stringify(jsonIndex)),
+      role: JSON_INDEX_ROLE,
+      relatedFileId: pdfFile.id,
+      parseStatus: "parsed"
+    });
+    setActiveQaReferenceId(book.id, indexRecord.id);
+    state = updateWorkflowStepState(
+      state,
+      "check_pdf",
+      "success",
+      `PDF 檢查完成，已解析 ${parsed.pageCount} 頁並建立 sentence JSON index。`
+    );
+    saveWorkflowState(jobId, state, "running");
+
+    state = updateWorkflowStepState(
+      state,
+      "check_ai_config",
+      aiSettings.hasGoogleApiKey ? "success" : "skipped",
+      aiSettings.hasGoogleApiKey
+        ? `AI 設定可用，執行模型：${selectedModel}`
+        : "未提供 Google API Key，AI 步驟將略過。"
+    );
+    saveWorkflowState(jobId, state, "running");
+
+    if (aiSettings.hasGoogleApiKey) {
+      state = updateWorkflowStepState(state, "create_qa", "running", "正在建立 Q&A。");
+      saveWorkflowState(jobId, state, "running");
+      repos.qaLogs.deleteByBookIdAndSource(book.id, ONE_CLICK_QA_PROVIDER, ONE_CLICK_QA_MODEL);
+      const qaDrafts = await generateWorkflowQaDrafts(book, selectedModel);
+      repos.qaLogs.createMany(
+        qaDrafts.map((item) => ({
+          bookId: book.id,
+          chapterId: null,
+          question: item.question,
+          answer: item.answer,
+          contextJson: item.pageNumber != null ? JSON.stringify([`p.${item.pageNumber}`]) : null,
+          provider: ONE_CLICK_QA_PROVIDER,
+          model: ONE_CLICK_QA_MODEL
+        }))
+      );
+      state = updateWorkflowStepState(state, "create_qa", "success", `已建立 ${qaDrafts.length} 筆 Q&A。`);
+      saveWorkflowState(jobId, state, "running");
+
+      state = updateWorkflowStepState(state, "create_knowledge_points", "running", "正在建立知識點。");
+      saveWorkflowState(jobId, state, "running");
+      repos.notes.deleteByBookIdAndTypeAndSourcePrefix(book.id, "text", ONE_CLICK_NOTE_SOURCE);
+      const knowledgePoints = await generateWorkflowKnowledgePointDrafts(book, selectedModel);
+      knowledgePoints.forEach((item, index) => {
+        repos.notes.create(book.id, {
+          type: "text",
+          title: item.title,
+          content: item.content,
+          pageNumber: item.pageNumber ?? null,
+          chapterId: null,
+          sourceMessageId: `${ONE_CLICK_NOTE_SOURCE}${index + 1}`
+        });
+      });
+      state = updateWorkflowStepState(
+        state,
+        "create_knowledge_points",
+        "success",
+        `已建立 ${knowledgePoints.length} 筆知識點。`
+      );
+      saveWorkflowState(jobId, state, "running");
+    } else {
+      state = updateWorkflowStepState(state, "create_qa", "skipped", "未提供 Google API Key，略過 Q&A。");
+      state = updateWorkflowStepState(
+        state,
+        "create_knowledge_points",
+        "skipped",
+        "未提供 Google API Key，略過知識點。"
+      );
+      saveWorkflowState(jobId, state, "running");
+    }
+
+    const noteCount = repos.notes
+      .findByBookId(book.id)
+      .filter((note) => note.type === "text" && (note.sourceMessageId?.startsWith(ONE_CLICK_NOTE_SOURCE) ?? false))
+      .length;
+    state = updateWorkflowStepState(
+      state,
+      "sync_knowledge_points_admin",
+      "success",
+      `後台可見知識點 ${noteCount} 筆。`
+    );
+    saveWorkflowState(jobId, state, "running");
+
+    repos.books.update(book.id, { status: "published" });
+    state = updateWorkflowStepState(
+      state,
+      "sync_student_publish",
+      "success",
+      "書本已切換為 published，學生前台可讀取 notes / contents / outline。"
+    );
+    saveWorkflowState(jobId, state, "running");
+
+    state = updateWorkflowStepState(state, "generate_reader_toc", "running", "正在產生 Reader TOC。");
+    saveWorkflowState(jobId, state, "running");
+    const storedIndex = readStoredJsonIndex(indexRecord);
+    if (!storedIndex) {
+      throw new Error("無法讀取剛建立的 JSON index。");
+    }
+    const detected = buildReaderTocFromIndexItems(storedIndex.items, 1, storedIndex.pageCount);
+    const detectedPages = flattenReaderOutline(detected.outline)
+      .map((node) => node.page)
+      .filter((page): page is number => typeof page === "number");
+    if (detected.outline.length === 0 || detectedPages.length === 0) {
+      throw new Error(detected.warnings[0] ?? "Reader TOC 偵測失敗。");
+    }
+    const startPage = Math.min(...detectedPages);
+    const finalToc = buildReaderTocFromIndexItems(storedIndex.items, startPage, storedIndex.pageCount);
+    if (finalToc.outline.length === 0) {
+      throw new Error(finalToc.warnings[0] ?? "Reader TOC 產生失敗。");
+    }
+    const tocRecord = storeGeneratedReaderTocFromIndex(book, indexRecord, finalToc.outline);
+    state = updateWorkflowStepState(
+      state,
+      "generate_reader_toc",
+      "success",
+      `Reader TOC 已建立，起始頁 ${startPage}，結束頁 ${storedIndex.pageCount}，共 ${tocRecord.itemCount} 項。`
+    );
+    saveWorkflowState(jobId, state, "running");
+
+    state = updateWorkflowStepState(state, "build_chapters", "running", "正在建立章節。");
+    saveWorkflowState(jobId, state, "running");
+    repos.contents.unlinkChaptersByBookId(book.id);
+    repos.chapters.deleteByBookId(book.id);
+    const chapterCtx = await createBookCoreContext(selectedModel);
+    const outlineChapters = await buildChaptersFromPdfOutline(chapterCtx, book.id);
+    const chapters =
+      outlineChapters.length > 0 ? outlineChapters : await buildChaptersFromContents(chapterCtx, book.id);
+    linkChaptersByPageRange(chapterCtx, book.id);
+    state = updateWorkflowStepState(state, "build_chapters", "success", `已建立 ${chapters.length} 個章節。`);
+    state.finishedAt = nowIso();
+    state.summary = "一鍵流程已完成。";
+    saveWorkflowState(jobId, state, "success");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const failedStep = state.steps.find((step) => step.status === "running")?.key;
+    if (failedStep) {
+      state = updateWorkflowStepState(state, failedStep, "failed", message);
+    }
+    state.finishedAt = nowIso();
+    state.summary = message;
+    saveWorkflowState(jobId, state, "failed");
   }
 }
 
@@ -1715,9 +2142,8 @@ app.post("/api/admin/books/:bookId/ai/split-book", async (req, res) => {
   const book = repos.books.findById(req.params.bookId);
   if (!book) return fail(res, 404, "book not found");
   try {
-    const { job, result } = await runJob(book.id, "split_book", req.body, () =>
-      splitBookIntoChapters(ctx, book.id)
-    );
+    const aiCtx = await createBookCoreContext();
+    const { job, result } = await runJob(book.id, "split_book", req.body, () => splitBookIntoChapters(aiCtx, book.id));
     res.json({ job, chapters: result });
   } catch (err) {
     fail(res, 500, err instanceof Error ? err.message : "split-book failed");
@@ -1751,11 +2177,12 @@ app.post("/api/admin/books/:bookId/chapters/:chapterId/ai/summarize", async (req
   const book = repos.books.findById(req.params.bookId);
   if (!book) return fail(res, 404, "book not found");
   try {
+    const aiCtx = await createBookCoreContext();
     const { job, result } = await runJob(
       book.id,
       "summarize_chapter",
       { chapterId: req.params.chapterId },
-      () => summarizeChapter(ctx, book.id, req.params.chapterId)
+      () => summarizeChapter(aiCtx, book.id, req.params.chapterId)
     );
     res.json({ job, chapter: result });
   } catch (err) {
@@ -1805,13 +2232,41 @@ app.post("/api/admin/books/:bookId/qa", async (req, res) => {
   const parsed = chatRequestSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, parsed.error.message);
   try {
+    const aiCtx = await createBookCoreContext();
     const { result } = await runJob(book.id, "book_qa", { question: parsed.data.question }, () =>
-      askBookQuestion(ctx, book.id, parsed.data.question)
+      askBookQuestion(aiCtx, book.id, parsed.data.question)
     );
     res.json({ answer: result.answer, context: result.contextChunks, log: result.log });
   } catch (err) {
     fail(res, 500, err instanceof Error ? err.message : "qa failed");
   }
+});
+
+app.get("/api/admin/books/:bookId/one-click-workflow", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const job = findLatestOneClickWorkflowJob(book.id);
+  res.json({ job, workflow: readWorkflowState(job) });
+});
+
+app.post("/api/admin/books/:bookId/one-click-workflow", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const aiSettings = await getAiSettings();
+  const selectedModel =
+    typeof req.body?.selectedModel === "string" && req.body.selectedModel.trim()
+      ? req.body.selectedModel.trim()
+      : aiSettings.defaultModel;
+  const workflow = createWorkflowState(book.id, selectedModel, aiSettings.hasGoogleApiKey);
+  const job = repos.aiJobs.create({
+    bookId: book.id,
+    jobType: "one_click_workflow",
+    status: "running",
+    inputJson: JSON.stringify({ selectedModel })
+  });
+  saveWorkflowState(job.id, workflow, "running");
+  void runOneClickWorkflow(job.id, book, selectedModel);
+  res.status(202).json({ job, workflow });
 });
 
 app.post("/api/admin/books/:bookId/qa/import-markdown", (req, res) => {
@@ -2624,6 +3079,6 @@ app.get("/api/admin/books/:bookId/imports/smart-solve/jobs/:jobId", (req, res) =
 const port = Number(process.env.ADMIN_API_PORT || 4300);
 app.listen(port, () => {
   console.log(
-    `AI-adm-D1 admin API listening on ${port} (ai provider: ${ai.name}, db: ${resolveDbPath()})`
+    `AI-adm-D1 admin API listening on ${port} (ai provider: dynamic-runtime, db: ${resolveDbPath()})`
   );
 });

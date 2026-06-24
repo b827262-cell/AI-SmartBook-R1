@@ -4,7 +4,8 @@ export const aiJobTypeSchema = z.enum([
   "split_book",
   "build_chapters",
   "summarize_chapter",
-  "book_qa"
+  "book_qa",
+  "one_click_workflow"
 ]);
 export type AiJobType = z.infer<typeof aiJobTypeSchema>;
 

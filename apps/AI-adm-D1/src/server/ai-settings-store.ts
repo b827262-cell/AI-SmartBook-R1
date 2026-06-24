@@ -38,6 +38,22 @@ function maskKey(key: string): string {
   return key.slice(0, 4) + "..." + key.slice(-4);
 }
 
+function getEnvGoogleApiKey(): string | null {
+  const key = process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim() || "";
+  return key || null;
+}
+
+function resolveEffectiveKey(settings: AiProviderSettings): { key: string | null; source: "user" | "env" | "none" } {
+  if (settings.hasGoogleApiKey && settings.googleApiKeyRaw) {
+    return { key: settings.googleApiKeyRaw, source: "user" };
+  }
+  const envKey = getEnvGoogleApiKey();
+  if (envKey) {
+    return { key: envKey, source: "env" };
+  }
+  return { key: null, source: "none" };
+}
+
 // Always read from disk — no in-memory singleton, so saves take effect immediately
 async function readSettings(): Promise<AiProviderSettings> {
   try {
@@ -55,10 +71,12 @@ async function writeSettings(settings: AiProviderSettings): Promise<void> {
 
 export async function getAiSettings() {
   const s = await readSettings();
+  const effective = resolveEffectiveKey(s);
   return {
     provider: s.provider,
-    hasGoogleApiKey: s.hasGoogleApiKey,
-    maskedGoogleApiKey: s.hasGoogleApiKey && s.googleApiKeyRaw ? maskKey(s.googleApiKeyRaw) : null,
+    hasGoogleApiKey: effective.key != null,
+    googleApiKeySource: effective.source,
+    maskedGoogleApiKey: effective.key ? maskKey(effective.key) : null,
     defaultModel: s.defaultModel,
     defaultEmbeddingModel: s.defaultEmbeddingModel,
     lastTestStatus: s.lastTestStatus ?? "not_tested",
@@ -99,12 +117,13 @@ export async function clearGoogleApiKey() {
   s.lastTestError = undefined;
   s.updatedAt = new Date().toISOString();
   await writeSettings(s);
-  return { hasGoogleApiKey: false };
+  return { hasGoogleApiKey: getEnvGoogleApiKey() != null };
 }
 
 export async function testAiConnection(): Promise<{ ok: boolean; message: string }> {
   const s = await readSettings();
-  if (!s.hasGoogleApiKey || !s.googleApiKeyRaw) {
+  const effective = resolveEffectiveKey(s);
+  if (!effective.key) {
     return { ok: false, message: "尚未提供 Google API Key。" };
   }
 
@@ -117,11 +136,17 @@ export async function testAiConnection(): Promise<{ ok: boolean; message: string
   s.updatedAt = now;
   await writeSettings(s);
 
-  return { ok: true, message: "Google AI 連線測試成功（placeholder — 尚未執行真實 API 呼叫）。" };
+  return {
+    ok: true,
+    message:
+      effective.source === "env"
+        ? "Google AI 連線測試成功（使用環境變數 key；目前仍為 placeholder 測試）。"
+        : "Google AI 連線測試成功（目前仍為 placeholder 測試）。"
+  };
 }
 
 // Read raw key for AI tasks — reads fresh from disk each time so no restart needed
 export async function getRawGoogleApiKey(): Promise<string | null> {
   const s = await readSettings();
-  return s.hasGoogleApiKey && s.googleApiKeyRaw ? s.googleApiKeyRaw : null;
+  return resolveEffectiveKey(s).key;
 }
