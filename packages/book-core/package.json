@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "typescript": "latest",
-    "@types/pdf-parse": "latest"
+    "@types/node": "latest"
   },
   "dependencies": {
     "@ai-smartbook/ai": "workspace:*",

@@ -1,22 +1,27 @@
-export type StudentRuntimeMode = "static" | "sqlite-api" | "remote-api";
-export type StudentChatMode = "keyword" | "remote";
+import { loadStudentRuntimeConfig, type StudentRuntimeConfig } from "./config";
+import type { StudentDataSource } from "./dataSource";
+import { StaticDataSource } from "./staticDataSource";
+import { SqliteDataSource } from "./sqliteDataSource";
+import { RemoteDataSource } from "./remoteDataSource";
 
-export interface StudentRuntimeConfig {
-  mode: StudentRuntimeMode;
-  dbPath: string;
-  apiPort: number;
-  publicDir: string;
-  readonlyMode: boolean;
-  chatMode: StudentChatMode;
-}
+export * from "./config";
+export * from "./dataSource";
+export * from "./staticDataSource";
+export * from "./sqliteDataSource";
+export * from "./remoteDataSource";
+export * from "./chatEngine";
 
-export function loadStudentRuntimeConfig(env: NodeJS.ProcessEnv = process.env): StudentRuntimeConfig {
-  return {
-    mode: (env.STU_RUNTIME_MODE as StudentRuntimeMode) || "sqlite-api",
-    dbPath: env.STU_DB_PATH || "/opt/AI-Stu-R1/data/student.db",
-    apiPort: Number(env.STU_API_PORT || 4310),
-    publicDir: env.STU_PUBLIC_DIR || "/opt/AI-Stu-R1/dist",
-    readonlyMode: env.STU_READONLY_MODE !== "false",
-    chatMode: (env.STU_CHAT_MODE as StudentChatMode) || "keyword"
-  };
+/** Build the data source matching the configured runtime mode. */
+export function createDataSource(
+  config: StudentRuntimeConfig = loadStudentRuntimeConfig()
+): StudentDataSource {
+  switch (config.mode) {
+    case "static":
+      return new StaticDataSource();
+    case "remote-api":
+      return new RemoteDataSource(config.remoteApiBaseUrl ?? "");
+    case "sqlite-api":
+    default:
+      return new SqliteDataSource(config.dbPath, config.readonlyMode);
+  }
 }
