@@ -31,7 +31,7 @@ export function AdminSidebar({
               if (item.enabled === false) {
                 return (
                   <span
-                    key={item.to}
+                    key={item.id}
                     className={DISABLED_CLASS}
                     title={item.description || "尚未實作"}
                   >
@@ -43,7 +43,7 @@ export function AdminSidebar({
 
               return (
                 <NavLink
-                  key={item.to}
+                  key={item.id}
                   end={item.end}
                   to={item.to}
                   className={NAV_CLASS}

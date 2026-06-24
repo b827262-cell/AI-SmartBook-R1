@@ -35,9 +35,9 @@ export function App() {
             {/* Dedicated reader-management pages take precedence over the tabbed detail. */}
             <Route path="/admin/books/:bookId/chapters" element={<ChaptersPage />} />
             <Route path="/admin/books/:bookId/qa" element={<QaPage />} />
+            <Route path="/admin/books/:bookId/smart-videos" element={<VideoSettingsPage />} />
             <Route path="/admin/books/:bookId/*" element={<BookDetail />} />
             <Route path="/admin/settings/ai" element={<AiSettingsPage />} />
-            <Route path="/admin/books/:bookId/smart-videos" element={<VideoSettingsPage />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </AdminShell>
