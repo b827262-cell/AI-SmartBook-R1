@@ -20,15 +20,11 @@ export function NotesHelpPage() {
         <AdminCard title="學生端操作步驟">
           <ol style={{ paddingLeft: "1.5rem", lineHeight: 2, fontSize: "0.9rem" }}>
             <li>
-              開啟學生閱讀器：
-              <a
-                href="http://localhost:5173/books"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: "#2563eb", marginLeft: "0.25rem" }}
-              >
-                http://localhost:5173/books
-              </a>
+              開啟學生閱讀器（請依部署環境的學生端網址進入書本列表頁，例如：
+              <code style={{ marginLeft: "0.25rem", fontSize: "0.85em", background: "#f1f5f9", padding: "0 0.3em", borderRadius: 3 }}>
+                /books
+              </code>
+              ）。
             </li>
             <li>點選任意書本進入閱讀器。</li>
             <li>開啟右側「智能筆記」面板（桌面版）或底部「筆記」按鈕（行動版）。</li>
