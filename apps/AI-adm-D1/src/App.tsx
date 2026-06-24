@@ -15,6 +15,7 @@ import { NotesHelpPage } from "./pages/NotesHelpPage";
 import { AdminNotesPage } from "./pages/AdminNotesPage";
 import { AiSettingsPage } from "./pages/AiSettingsPage";
 import { VideoSettingsPage } from "./pages/VideoSettingsPage";
+import { ReaderFeaturesPage } from "./pages/ReaderFeaturesPage";
 
 export function App() {
   return (
@@ -38,6 +39,7 @@ export function App() {
             <Route path="/admin/books/:bookId/smart-videos" element={<VideoSettingsPage />} />
             <Route path="/admin/books/:bookId/*" element={<BookDetail />} />
             <Route path="/admin/settings/ai" element={<AiSettingsPage />} />
+            <Route path="/admin/settings/reader-features" element={<ReaderFeaturesPage />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </AdminShell>
