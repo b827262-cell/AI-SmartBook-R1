@@ -1890,3 +1890,92 @@ body.reader-reading-mobile {
   border: 1px solid var(--border);
 }
 .btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ---- PasteBackNotePanel in-panel mode ------------------------------------ */
+.paste-back-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* ---- ExternalAiAskModal in-panel mode ------------------------------------ */
+.external-ai-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* ---- Reader paste-back / screenshot-ask right panel columns -------------- */
+.reader-paste-back-col,
+.reader-screenshot-ask-col {
+  min-width: 320px;
+  max-width: 480px;
+}
+
+/* ---- PDF Crop Overlay ---------------------------------------------------- */
+/* reader-pdf-col needs position:relative so absolute crop overlay stays scoped */
+.reader-pdf-col { position: relative; }
+
+.pdf-crop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.48);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.pdf-crop-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(4px);
+  border-radius: 10px;
+  padding: 8px 14px;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+.pdf-crop-hint {
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.pdf-crop-btn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: #334155;
+  color: #f1f5f9;
+  transition: background 0.15s;
+}
+.pdf-crop-btn:hover { background: #475569; }
+.pdf-crop-btn-confirm { background: #ea580c; color: #fff; }
+.pdf-crop-btn-confirm:hover { background: #c2410c; }
+.pdf-crop-btn-cancel { background: #991b1b; color: #fff; }
+.pdf-crop-btn-cancel:hover { background: #7f1d1d; }
+
+/* The orange crop selection rectangle */
+.pdf-crop-rect {
+  position: absolute;
+  border: 2.5px solid #f97316;
+  background: rgba(249, 115, 22, 0.12);
+  border-radius: 2px;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}

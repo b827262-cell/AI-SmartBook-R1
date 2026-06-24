@@ -22,13 +22,16 @@ export function PasteBackNotePanel({
   pageLabel,
   chapterTitle,
   onSave,
-  onClose
+  onClose,
+  inPanel = false
 }: {
   bookTitle: string;
   pageLabel: string | null;
   chapterTitle: string | null;
   onSave: (title: string, content: string) => Promise<void>;
   onClose: () => void;
+  /** When true, renders as inline panel content (no backdrop overlay). */
+  inPanel?: boolean;
 }) {
   const [noteTitle, setNoteTitle] = useState(
     chapterTitle ? `${chapterTitle} - AI 解答` : pageLabel ? `${pageLabel} - AI 解答` : "AI 解答筆記"
@@ -67,15 +70,14 @@ export function PasteBackNotePanel({
     }
   }
 
-  return (
-    <div className="paste-back-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="paste-back-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="貼回AI筆記"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const inner = (
+    <div
+      className={inPanel ? "paste-back-panel-content" : "paste-back-modal"}
+      role="dialog"
+      aria-modal={!inPanel}
+      aria-label="貼回AI筆記"
+      onClick={inPanel ? undefined : (e) => e.stopPropagation()}
+    >
         <div className="paste-back-header">
           <h3>🤖 貼回AI筆記</h3>
           <button type="button" className="tool-btn" onClick={onClose}>關閉</button>
@@ -152,6 +154,12 @@ export function PasteBackNotePanel({
           </button>
         </div>
       </div>
+  );
+
+  if (inPanel) return inner;
+  return (
+    <div className="paste-back-backdrop" role="presentation" onClick={onClose}>
+      {inner}
     </div>
   );
 }
