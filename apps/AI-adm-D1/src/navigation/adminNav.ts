@@ -27,6 +27,13 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { label: "書本列表", to: "/admin/books", end: true, enabled: true },
       { label: "新增書本", to: "/admin/books/new", end: true, enabled: true },
       {
+        label: "智能影音設定",
+        to: "/admin/books",
+        end: false,
+        enabled: true,
+        description: "管理各書本章節影音內容（從書本列表進入各書本）"
+      },
+      {
         label: "AI 筆記管理",
         to: "/admin/notes",
         end: true,

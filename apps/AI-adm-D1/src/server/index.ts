@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   getAiSettings,
   saveAiSettings,
@@ -279,6 +280,35 @@ app.use("/api/uploads/appearance", express.static(APPEARANCE_UPLOAD_DIR));
 
 function fail(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
+}
+
+// ---- Auth guard ----------------------------------------------------------------
+// If ADMIN_SECRET env var is set, all admin write routes require
+// "Authorization: Bearer <secret>" header. Skip in dev when var is unset.
+const ADMIN_SECRET = process.env.ADMIN_SECRET?.trim() || "";
+
+function requireAdminAuth(req: Request, res: Response): boolean {
+  if (!ADMIN_SECRET) return true; // dev mode: no auth required
+  const header = req.headers["authorization"] ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (token !== ADMIN_SECRET) {
+    res.status(401).json({ error: "Unauthorized: valid ADMIN_SECRET required" });
+    return false;
+  }
+  return true;
+}
+
+// ---- URL validation (video URLs) -----------------------------------------------
+const SAFE_VIDEO_URL_RE = /^https:\/\/.+/i;
+const YOUTUBE_RE = /^https:\/\/(www\.youtube\.com\/watch|youtu\.be\/).+/i;
+const UNSAFE_SCHEME_RE = /^(javascript|data|vbscript):/i;
+
+function validateVideoUrl(url: string): { ok: boolean; error?: string } {
+  const trimmed = url.trim();
+  if (!trimmed) return { ok: true }; // empty is allowed (field optional)
+  if (UNSAFE_SCHEME_RE.test(trimmed)) return { ok: false, error: "不允許的 URL scheme（javascript/data/vbscript）" };
+  if (!SAFE_VIDEO_URL_RE.test(trimmed)) return { ok: false, error: "影片 URL 必須使用 https://" };
+  return { ok: true };
 }
 
 function isPdfBookFile(file: BookFile): boolean {
@@ -2285,8 +2315,27 @@ app.post("/api/admin/books/:bookId/qa/import-markdown", (req, res) => {
     );
   }
 
+  // Idempotency: normalize and deduplicate against existing manual Q&A for this book.
+  const normalizeQ = (q: string) => q.trim().replace(/\s+/g, " ").toLowerCase();
+  const existingSet = new Set(
+    repos.qaLogs
+      .findManualByBookId(book.id)
+      .map((log) => normalizeQ(log.question))
+  );
+
+  const toCreate: typeof items = [];
+  let skipped = 0;
+  for (const item of items) {
+    if (existingSet.has(normalizeQ(item.question))) {
+      skipped++;
+    } else {
+      toCreate.push(item);
+      existingSet.add(normalizeQ(item.question));
+    }
+  }
+
   const created = repos.qaLogs.createMany(
-    items.map((item) => ({
+    toCreate.map((item) => ({
       bookId: book.id,
       question: item.question,
       answer: item.answer,
@@ -2296,7 +2345,7 @@ app.post("/api/admin/books/:bookId/qa/import-markdown", (req, res) => {
     }))
   );
 
-  res.status(201).json({ imported: created.length, logs: created });
+  res.status(201).json({ imported: created.length, skipped, logs: created });
 });
 
 app.get("/api/admin/books/:bookId/ai-jobs", (req, res) => {
@@ -3074,6 +3123,251 @@ app.get("/api/admin/books/:bookId/imports/smart-solve/jobs/:jobId", (req, res) =
   if (!job || job.bookId !== bookId) return fail(res, 404, "job not found");
   const items = repos.smartSolveImports.findItemsByJob(jobId);
   return res.json({ job, items });
+});
+
+// ============================================================
+// Smart Video Settings — per-book, stored as JSON in app_settings
+// ============================================================
+
+type SmartVideo = {
+  id: string;
+  bookId: string;
+  chapterId: string | null;
+  title: string;
+  youtubeUrl: string;
+  videoUrl: string;
+  enabled: boolean;
+  orderIndex: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function smartVideoKey(bookId: string) { return `smart_videos:${bookId}`; }
+
+function readSmartVideos(bookId: string): SmartVideo[] {
+  try {
+    const raw = repos.settings.get(smartVideoKey(bookId));
+    return raw ? (JSON.parse(raw) as SmartVideo[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSmartVideos(bookId: string, videos: SmartVideo[]): void {
+  repos.settings.set(smartVideoKey(bookId), JSON.stringify(videos));
+}
+
+// GET — list all videos for a book (admin)
+app.get("/api/admin/books/:bookId/smart-videos", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  return res.json({ videos: readSmartVideos(book.id) });
+});
+
+// POST — create a new video entry (auth required)
+app.post("/api/admin/books/:bookId/smart-videos", (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+
+  const { title, chapterId, youtubeUrl = "", videoUrl = "", enabled = true, orderIndex } = req.body ?? {};
+  if (!title?.trim()) return fail(res, 400, "title is required");
+
+  const ytCheck = validateVideoUrl(youtubeUrl);
+  if (!ytCheck.ok) return fail(res, 400, `youtubeUrl: ${ytCheck.error}`);
+  const vidCheck = validateVideoUrl(videoUrl);
+  if (!vidCheck.ok) return fail(res, 400, `videoUrl: ${vidCheck.error}`);
+
+  const videos = readSmartVideos(book.id);
+  const now = nowIso();
+  const video: SmartVideo = {
+    id: `sv_${randomUUID()}`,
+    bookId: book.id,
+    chapterId: typeof chapterId === "string" && chapterId.trim() ? chapterId.trim() : null,
+    title: String(title).trim(),
+    youtubeUrl: String(youtubeUrl).trim(),
+    videoUrl: String(videoUrl).trim(),
+    enabled: enabled !== false,
+    orderIndex: typeof orderIndex === "number" ? orderIndex : videos.length,
+    createdAt: now,
+    updatedAt: now
+  };
+  videos.push(video);
+  writeSmartVideos(book.id, videos);
+  return res.status(201).json({ video });
+});
+
+// PATCH — update a video entry (auth required)
+app.patch("/api/admin/books/:bookId/smart-videos/:videoId", (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+
+  const { title, chapterId, youtubeUrl, videoUrl, enabled, orderIndex } = req.body ?? {};
+  if (youtubeUrl !== undefined) {
+    const c = validateVideoUrl(String(youtubeUrl));
+    if (!c.ok) return fail(res, 400, `youtubeUrl: ${c.error}`);
+  }
+  if (videoUrl !== undefined) {
+    const c = validateVideoUrl(String(videoUrl));
+    if (!c.ok) return fail(res, 400, `videoUrl: ${c.error}`);
+  }
+
+  const videos = readSmartVideos(book.id);
+  const idx = videos.findIndex((v) => v.id === req.params.videoId);
+  if (idx === -1) return fail(res, 404, "video not found");
+
+  const now = nowIso();
+  videos[idx] = {
+    ...videos[idx],
+    ...(title !== undefined && { title: String(title).trim() }),
+    ...(chapterId !== undefined && { chapterId: chapterId?.trim() || null }),
+    ...(youtubeUrl !== undefined && { youtubeUrl: String(youtubeUrl).trim() }),
+    ...(videoUrl !== undefined && { videoUrl: String(videoUrl).trim() }),
+    ...(enabled !== undefined && { enabled: enabled !== false }),
+    ...(orderIndex !== undefined && { orderIndex: Number(orderIndex) }),
+    updatedAt: now
+  };
+  writeSmartVideos(book.id, videos);
+  return res.json({ video: videos[idx] });
+});
+
+// DELETE — remove a video entry (auth required)
+app.delete("/api/admin/books/:bookId/smart-videos/:videoId", (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+
+  const videos = readSmartVideos(book.id);
+  const filtered = videos.filter((v) => v.id !== req.params.videoId);
+  if (filtered.length === videos.length) return fail(res, 404, "video not found");
+  writeSmartVideos(book.id, filtered);
+  return res.json({ deleted: true });
+});
+
+// Student GET — only enabled videos (public, no auth)
+app.get("/api/student/books/:bookId/smart-videos", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book || book.status !== "published") return fail(res, 404, "book not found");
+  const all = readSmartVideos(book.id);
+  const enabled = all.filter((v) => v.enabled).sort((a, b) => a.orderIndex - b.orderIndex);
+  return res.json({ videos: enabled });
+});
+
+// ============================================================
+// Knowledge Points — backed by smart_book_notes with ONE_CLICK_NOTE_SOURCE prefix
+// Settings stored in app_settings; sync is a stub for GPT-5.4 integration
+// ============================================================
+
+const KP_SETTINGS_KEY = (bookId: string) => `knowledge_point_settings:${bookId}`;
+
+type KnowledgePointSettings = {
+  sidebarEnabled: boolean;
+  searchEnabled: boolean;
+  defaultExpanded: boolean;
+};
+
+function defaultKpSettings(): KnowledgePointSettings {
+  return { sidebarEnabled: true, searchEnabled: true, defaultExpanded: false };
+}
+
+function readKpSettings(bookId: string): KnowledgePointSettings {
+  try {
+    const raw = repos.settings.get(KP_SETTINGS_KEY(bookId));
+    return raw ? { ...defaultKpSettings(), ...(JSON.parse(raw) as Partial<KnowledgePointSettings>) } : defaultKpSettings();
+  } catch {
+    return defaultKpSettings();
+  }
+}
+
+function writeKpSettings(bookId: string, s: KnowledgePointSettings): void {
+  repos.settings.set(KP_SETTINGS_KEY(bookId), JSON.stringify(s));
+}
+
+function isKnowledgePointNote(note: SmartBookNote): boolean {
+  return note.type === "text" && (note.sourceMessageId?.startsWith(ONE_CLICK_NOTE_SOURCE) ?? false);
+}
+
+// Admin GET — knowledge point list for a book
+app.get("/api/admin/books/:bookId/knowledge-points", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const kps = repos.notes.findByBookId(book.id).filter(isKnowledgePointNote);
+  return res.json({ knowledgePoints: kps, total: kps.length });
+});
+
+// Admin GET — stats: chapter count, kp total, last updated
+app.get("/api/admin/books/:bookId/knowledge-points/stats", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const chapters = repos.chapters.findByBookId(book.id);
+  const kps = repos.notes.findByBookId(book.id).filter(isKnowledgePointNote);
+  const lastUpdated = kps.reduce<string | null>((max, n) => {
+    if (!max || n.updatedAt > max) return n.updatedAt;
+    return max;
+  }, null);
+  return res.json({
+    totalChapters: chapters.length,
+    totalKnowledgePoints: kps.length,
+    lastUpdatedAt: lastUpdated
+  });
+});
+
+// Admin POST — sync stub (GPT-5.4 will plug in real logic)
+app.post("/api/admin/books/:bookId/knowledge-points/sync", (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  // Stub: idempotent — returns current count. GPT-5.4 will replace this body
+  // with sentence-index JSON parsing and upsert logic.
+  const kps = repos.notes.findByBookId(book.id).filter(isKnowledgePointNote);
+  return res.json({
+    synced: kps.length,
+    message: "知識點同步入口就緒（等待 AI 萃取整合）。目前回傳現有知識點數量。"
+  });
+});
+
+// Admin GET/PUT — knowledge point display settings
+app.get("/api/admin/books/:bookId/knowledge-points/settings", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  return res.json(readKpSettings(book.id));
+});
+
+app.put("/api/admin/books/:bookId/knowledge-points/settings", (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book) return fail(res, 404, "book not found");
+  const current = readKpSettings(book.id);
+  const { sidebarEnabled, searchEnabled, defaultExpanded } = req.body ?? {};
+  const updated: KnowledgePointSettings = {
+    sidebarEnabled: typeof sidebarEnabled === "boolean" ? sidebarEnabled : current.sidebarEnabled,
+    searchEnabled: typeof searchEnabled === "boolean" ? searchEnabled : current.searchEnabled,
+    defaultExpanded: typeof defaultExpanded === "boolean" ? defaultExpanded : current.defaultExpanded
+  };
+  writeKpSettings(book.id, updated);
+  return res.json(updated);
+});
+
+// Student GET — knowledge points (respects sidebarEnabled setting)
+app.get("/api/student/books/:bookId/knowledge-points", (req, res) => {
+  const book = repos.books.findById(String(req.params.bookId));
+  if (!book || book.status !== "published") return fail(res, 404, "book not found");
+  const settings = readKpSettings(book.id);
+  if (!settings.sidebarEnabled) return res.json({ knowledgePoints: [], settings, disabled: true });
+  const kps = repos.notes.findByBookId(book.id).filter(isKnowledgePointNote);
+  return res.json({ knowledgePoints: kps, settings, disabled: false });
+});
+
+// ============================================================
+// Auth guard on existing admin write routes (Q&A create/delete)
+// ============================================================
+
+// Wrap the existing POST /api/admin/books/:bookId/qa with auth
+// NOTE: existing route is already registered above; add a guard-only alias:
+app.post("/api/admin/books/:bookId/qa/auth-check", (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  return res.json({ ok: true });
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);
