@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AdminCard } from "../components/admin/AdminCard";
 import { AdminPageHeader } from "../components/admin/AdminPageHeader";
 
@@ -47,6 +47,32 @@ const DEFAULT: ReaderFeatureSettings = {
   watermark: { enabled: true, opacity: 0.15, source: "last_pdf_page" }
 };
 
+const TOGGLE_ROW_STYLE: React.CSSProperties = {
+  display: "flex", alignItems: "center", justifyContent: "space-between",
+  padding: "10px 0", borderBottom: "1px solid #f3f4f6"
+};
+
+// Defined outside the page component so React sees a stable component type
+// across re-renders — avoids unmount/remount that can swallow in-flight clicks.
+function ToggleBtn({ on, disabled, onClick }: { on: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: "4px 14px", borderRadius: 6, border: "none", cursor: disabled ? "not-allowed" : "pointer",
+        fontSize: 12, minWidth: 52,
+        background: on ? "#dcfce7" : "#fee2e2",
+        color: on ? "#15803d" : "#dc2626",
+        opacity: disabled ? 0.6 : 1
+      }}
+    >
+      {on ? "開啟" : "關閉"}
+    </button>
+  );
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: init?.body ? { "Content-Type": "application/json" } : undefined,
@@ -57,6 +83,15 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(d.error ?? `${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+function mergeWithDefault(raw: Partial<ReaderFeatureSettings>): ReaderFeatureSettings {
+  return {
+    noteFeatures: { ...DEFAULT.noteFeatures, ...(raw.noteFeatures ?? {}) },
+    pdfTools: { ...DEFAULT.pdfTools, ...(raw.pdfTools ?? {}) },
+    extraFeatures: { ...DEFAULT.extraFeatures, ...(raw.extraFeatures ?? {}) },
+    watermark: { ...DEFAULT.watermark, ...(raw.watermark ?? {}) }
+  };
 }
 
 const NOTE_LABELS: { key: keyof NoteFeatureSettings; label: string; desc: string }[] = [
@@ -88,23 +123,23 @@ export function ReaderFeaturesPage() {
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
+  // Separate slider state: live value during drag, committed only on mouse/touch release.
+  // This avoids firing dozens of concurrent PUT requests during a single slider drag.
+  const [sliderVal, setSliderVal] = useState(DEFAULT.watermark.opacity * 100);
+  const sliderDirty = useRef(false);
+
   useEffect(() => {
     void http<Partial<ReaderFeatureSettings>>("/api/admin/settings/reader-features")
       .then((raw) => {
-        // Deep-merge with DEFAULT so missing nested keys (e.g. extraFeatures absent in
-        // old DB entries) never cause "Cannot read properties of undefined".
-        setSettings({
-          noteFeatures: { ...DEFAULT.noteFeatures, ...(raw.noteFeatures ?? {}) },
-          pdfTools: { ...DEFAULT.pdfTools, ...(raw.pdfTools ?? {}) },
-          extraFeatures: { ...DEFAULT.extraFeatures, ...(raw.extraFeatures ?? {}) },
-          watermark: { ...DEFAULT.watermark, ...(raw.watermark ?? {}) }
-        });
+        const merged = mergeWithDefault(raw);
+        setSettings(merged);
+        setSliderVal(merged.watermark.opacity * 100);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  async function save(updated: ReaderFeatureSettings) {
+  async function save(updated: ReaderFeatureSettings, previousSettings: ReaderFeatureSettings) {
     setSaving(true);
     setMsg("");
     setError("");
@@ -113,14 +148,12 @@ export function ReaderFeaturesPage() {
         method: "PUT",
         body: JSON.stringify(updated)
       });
-      setSettings({
-        noteFeatures: { ...DEFAULT.noteFeatures, ...(saved.noteFeatures ?? {}) },
-        pdfTools: { ...DEFAULT.pdfTools, ...(saved.pdfTools ?? {}) },
-        extraFeatures: { ...DEFAULT.extraFeatures, ...(saved.extraFeatures ?? {}) },
-        watermark: { ...DEFAULT.watermark, ...(saved.watermark ?? {}) }
-      });
+      setSettings(mergeWithDefault(saved));
       setMsg("設定已儲存。");
     } catch (e: unknown) {
+      // Revert optimistic state on error so UI stays consistent with server
+      setSettings(previousSettings);
+      setSliderVal(previousSettings.watermark.opacity * 100);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
@@ -128,56 +161,48 @@ export function ReaderFeaturesPage() {
   }
 
   function toggleNote(key: keyof NoteFeatureSettings) {
+    const prev = settings;
     const updated = { ...settings, noteFeatures: { ...settings.noteFeatures, [key]: !settings.noteFeatures[key] } };
     setSettings(updated);
-    void save(updated);
+    void save(updated, prev);
   }
 
   function togglePdf(key: keyof PdfToolSettings) {
+    const prev = settings;
     const updated = { ...settings, pdfTools: { ...settings.pdfTools, [key]: !settings.pdfTools[key] } };
     setSettings(updated);
-    void save(updated);
+    void save(updated, prev);
   }
 
   function toggleExtra(key: keyof ReaderExtraFeatureSettings) {
+    const prev = settings;
     const updated = { ...settings, extraFeatures: { ...settings.extraFeatures, [key]: !settings.extraFeatures[key] } };
     setSettings(updated);
-    void save(updated);
+    void save(updated, prev);
   }
 
   function toggleWatermark() {
+    const prev = settings;
     const updated = { ...settings, watermark: { ...settings.watermark, enabled: !settings.watermark.enabled } };
     setSettings(updated);
-    void save(updated);
+    void save(updated, prev);
   }
 
-  function setWatermarkOpacity(opacity: number) {
+  // Slider: update local display immediately, commit to server only on release
+  function onSliderChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = Number(e.target.value);
+    setSliderVal(val);
+    sliderDirty.current = true;
+  }
+
+  function onSliderCommit() {
+    if (!sliderDirty.current) return;
+    sliderDirty.current = false;
+    const opacity = sliderVal / 100;
+    const prev = settings;
     const updated = { ...settings, watermark: { ...settings.watermark, opacity } };
     setSettings(updated);
-    void save(updated);
-  }
-
-  const toggleRowStyle: React.CSSProperties = {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "10px 0", borderBottom: "1px solid #f3f4f6"
-  };
-
-  function ToggleBtn({ on, onClick }: { on: boolean; onClick: () => void }) {
-    return (
-      <button
-        onClick={onClick}
-        disabled={saving}
-        style={{
-          padding: "4px 14px", borderRadius: 6, border: "none", cursor: "pointer",
-          fontSize: 12, minWidth: 52,
-          background: on ? "#dcfce7" : "#fee2e2",
-          color: on ? "#15803d" : "#dc2626",
-          opacity: saving ? 0.6 : 1
-        }}
-      >
-        {on ? "開啟" : "關閉"}
-      </button>
-    );
+    void save(updated, prev);
   }
 
   if (loading) return <div><AdminPageHeader title="閱讀器功能開關" /><p className="muted">載入中…</p></div>;
@@ -190,18 +215,18 @@ export function ReaderFeaturesPage() {
         關閉的功能將對所有學生端立即生效。開關預設全部開啟，不會影響既有操作。
       </p>
 
-      {error && <p className="error" style={{ marginBottom: "1rem" }}>{error}</p>}
+      {error && <p className="error" style={{ marginBottom: "1rem", color: "#b91c1c" }}>{error}</p>}
       {msg && <p style={{ color: "#15803d", marginBottom: "1rem", fontSize: 14 }}>{msg}</p>}
 
       <AdminCard title="筆記功能開關">
         <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>控制學生端 AI 筆記相關功能的顯示。</p>
         {NOTE_LABELS.map(({ key, label, desc }) => (
-          <div key={key} style={toggleRowStyle}>
+          <div key={key} style={TOGGLE_ROW_STYLE}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
               <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
             </div>
-            <ToggleBtn on={settings.noteFeatures[key]} onClick={() => toggleNote(key)} />
+            <ToggleBtn on={settings.noteFeatures[key]} disabled={saving} onClick={() => toggleNote(key)} />
           </div>
         ))}
       </AdminCard>
@@ -210,12 +235,12 @@ export function ReaderFeaturesPage() {
         <AdminCard title="PDF 工具開關">
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>控制 PDF 閱讀器工具列中各工具的顯示。</p>
           {PDF_LABELS.map(({ key, label, desc }) => (
-            <div key={key} style={toggleRowStyle}>
+            <div key={key} style={TOGGLE_ROW_STYLE}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
               </div>
-              <ToggleBtn on={settings.pdfTools[key]} onClick={() => togglePdf(key)} />
+              <ToggleBtn on={settings.pdfTools[key]} disabled={saving} onClick={() => togglePdf(key)} />
             </div>
           ))}
         </AdminCard>
@@ -225,12 +250,12 @@ export function ReaderFeaturesPage() {
         <AdminCard title="閱讀器其他功能設定">
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>控制學生端閱讀器其他常用功能開關。</p>
           {EXTRA_LABELS.map(({ key, label, desc }) => (
-            <div key={key} style={toggleRowStyle}>
+            <div key={key} style={TOGGLE_ROW_STYLE}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
               </div>
-              <ToggleBtn on={settings.extraFeatures[key]} onClick={() => toggleExtra(key)} />
+              <ToggleBtn on={settings.extraFeatures[key]} disabled={saving} onClick={() => toggleExtra(key)} />
             </div>
           ))}
         </AdminCard>
@@ -239,41 +264,43 @@ export function ReaderFeaturesPage() {
       <div style={{ marginTop: "1rem" }}>
         <AdminCard title="浮水印設定">
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>控制 PDF 閱讀器的浮水印開關與顯示透明度。</p>
-          
-          <div style={toggleRowStyle}>
+
+          <div style={TOGGLE_ROW_STYLE}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14 }}>浮水印</div>
               <div style={{ fontSize: 12, color: "#6b7280" }}>在閱讀器底層顯示學生專屬或識別浮水印</div>
             </div>
-            <ToggleBtn on={settings.watermark.enabled} onClick={toggleWatermark} />
+            <ToggleBtn on={settings.watermark.enabled} disabled={saving} onClick={toggleWatermark} />
           </div>
 
           <div style={{ padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>透明度 ({(settings.watermark.opacity * 100).toFixed(0)}%)</div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>透明度 ({sliderVal.toFixed(0)}%)</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>設定浮水印的透明程度，數字越小越透明</div>
               </div>
             </div>
-            <input 
-              type="range" 
-              min="1" 
-              max="100" 
-              value={settings.watermark.opacity * 100} 
-              onChange={e => setWatermarkOpacity(Number(e.target.value) / 100)} 
+            <input
+              type="range"
+              min="1"
+              max="100"
+              value={sliderVal}
+              onChange={onSliderChange}
+              onMouseUp={onSliderCommit}
+              onTouchEnd={onSliderCommit}
               disabled={saving || !settings.watermark.enabled}
-              style={{ width: "100%", cursor: settings.watermark.enabled ? "pointer" : "not-allowed" }}
+              style={{ width: "100%", cursor: (saving || !settings.watermark.enabled) ? "not-allowed" : "pointer" }}
             />
           </div>
 
           <div style={{ padding: "10px 0" }}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>浮水印內容預覽</div>
-            <div style={{ 
-              background: "#f9fafb", 
-              padding: 12, 
-              borderRadius: 6, 
+            <div style={{
+              background: "#f9fafb",
+              padding: 12,
+              borderRadius: 6,
               border: "1px dashed #d1d5db",
-              color: `rgba(0,0,0,${settings.watermark.opacity})`,
+              color: `rgba(0,0,0,${sliderVal / 100})`,
               fontSize: 16,
               fontWeight: "bold",
               textAlign: "center",
