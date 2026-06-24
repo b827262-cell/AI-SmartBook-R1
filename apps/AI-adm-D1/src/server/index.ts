@@ -7,6 +7,13 @@ import {
   testAiConnection,
   getRawGoogleApiKey
 } from "./ai-settings-store.js";
+import {
+  generateKnowledgePointsForBook,
+  generateKnowledgePointsForChapter,
+  getGoogleKnowledgeProviderProbe,
+  getKnowledgeGenerationStatus,
+  getKnowledgeStats
+} from "./google-knowledge-service.js";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
 import { getDb, createRepositories, runMigrations, resolveDbPath } from "@ai-smartbook/db";
@@ -54,6 +61,7 @@ import {
   createSmartBookNoteInputSchema,
   updateSmartBookNoteInputSchema,
   questionBankJsonFileSchema,
+  knowledgeGenerationRequestSchema,
   DEFAULT_APPEARANCE,
   type AiJobType,
   type Book,
@@ -68,6 +76,7 @@ import {
   type StoredJsonIndexSummary,
   type QuestionBankImportJob,
   type SmartBookNote,
+  type KnowledgeGenerationSummary,
   smartSolveJsonFileSchema
 } from "@ai-smartbook/schema";
 
@@ -86,7 +95,6 @@ const READER_TOC_SCHEMA_VERSION = "smartbook-reader-toc-v1";
 const READER_TOC_SOURCE = "manual_admin_import" as const;
 const ONE_CLICK_QA_PROVIDER = "one_click_workflow";
 const ONE_CLICK_QA_MODEL = "qa_batch_v1";
-const ONE_CLICK_NOTE_SOURCE = "one-click-knowledge-point:";
 
 type WorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed";
 type WorkflowStepKey =
@@ -1080,12 +1088,6 @@ type WorkflowQaDraft = {
   pageNumber?: number | null;
 };
 
-type WorkflowKnowledgePointDraft = {
-  title: string;
-  content: string;
-  pageNumber?: number | null;
-};
-
 async function generateWorkflowQaDrafts(
   book: Book,
   selectedModel: string
@@ -1110,34 +1112,6 @@ async function generateWorkflowQaDrafts(
     .map((item) => ({
       question: item.question.trim(),
       answer: item.answer.trim(),
-      pageNumber: typeof item.pageNumber === "number" ? item.pageNumber : null
-    }));
-}
-
-async function generateWorkflowKnowledgePointDrafts(
-  book: Book,
-  selectedModel: string
-): Promise<WorkflowKnowledgePointDraft[]> {
-  const aiCtx = await createBookCoreContext(selectedModel);
-  const snippets = collectBookContextSnippets(book.id, 12);
-  const prompt = {
-    prompt: [
-      "你是教材編輯。請根據以下書籍片段，整理 5 個知識點。",
-      '輸出格式必須是 JSON array，每筆為 {"title":"", "content":"", "pageNumber":1}。',
-      "title 要短，content 用 1-2 句說明，不要輸出 markdown。",
-      `書名：${book.title}`,
-      "內容片段：",
-      snippets.join("\n\n")
-    ].join("\n")
-  };
-  const raw = await aiCtx.ai.generateText(prompt);
-  const parsed = extractJson<WorkflowKnowledgePointDraft[]>(raw) ?? [];
-  return parsed
-    .filter((item) => item && item.title?.trim() && item.content?.trim())
-    .slice(0, 5)
-    .map((item) => ({
-      title: item.title.trim(),
-      content: item.content.trim(),
       pageNumber: typeof item.pageNumber === "number" ? item.pageNumber : null
     }));
 }
@@ -1402,23 +1376,12 @@ async function runOneClickWorkflow(jobId: string, book: Book, selectedModel: str
 
       state = updateWorkflowStepState(state, "create_knowledge_points", "running", "正在建立知識點。");
       saveWorkflowState(jobId, state, "running");
-      repos.notes.deleteByBookIdAndTypeAndSourcePrefix(book.id, "text", ONE_CLICK_NOTE_SOURCE);
-      const knowledgePoints = await generateWorkflowKnowledgePointDrafts(book, selectedModel);
-      knowledgePoints.forEach((item, index) => {
-        repos.notes.create(book.id, {
-          type: "text",
-          title: item.title,
-          content: item.content,
-          pageNumber: item.pageNumber ?? null,
-          chapterId: null,
-          sourceMessageId: `${ONE_CLICK_NOTE_SOURCE}${index + 1}`
-        });
-      });
+      const knowledgeSummary = await generateKnowledgePointsForBook(repos, book, selectedModel);
       state = updateWorkflowStepState(
         state,
         "create_knowledge_points",
         "success",
-        `已建立 ${knowledgePoints.length} 筆知識點。`
+        `知識點完成：created ${knowledgeSummary.created} / updated ${knowledgeSummary.updated} / skipped ${knowledgeSummary.skipped} / failed ${knowledgeSummary.failed}`
       );
       saveWorkflowState(jobId, state, "running");
     } else {
@@ -1432,10 +1395,7 @@ async function runOneClickWorkflow(jobId: string, book: Book, selectedModel: str
       saveWorkflowState(jobId, state, "running");
     }
 
-    const noteCount = repos.notes
-      .findByBookId(book.id)
-      .filter((note) => note.type === "text" && (note.sourceMessageId?.startsWith(ONE_CLICK_NOTE_SOURCE) ?? false))
-      .length;
+    const noteCount = getKnowledgeStats(repos, book.id).total;
     state = updateWorkflowStepState(
       state,
       "sync_knowledge_points_admin",
@@ -2222,6 +2182,67 @@ app.post("/api/admin/settings/ai-provider/test", async (_req, res) => {
     res.json(await testAiConnection());
   } catch (err) {
     res.status(500).json({ ok: false, message: String(err) });
+  }
+});
+
+app.get("/api/admin/books/:bookId/knowledge/provider-probe", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  try {
+    res.json(await getGoogleKnowledgeProviderProbe());
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get("/api/admin/books/:bookId/knowledge/status", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  res.json({ status: await getKnowledgeGenerationStatus(repos, book.id) });
+});
+
+app.get("/api/admin/books/:bookId/knowledge/stats", (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  res.json({ stats: getKnowledgeStats(repos, book.id) });
+});
+
+app.post("/api/admin/books/:bookId/knowledge/generate", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const parsed = knowledgeGenerationRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  try {
+    const summary = await generateKnowledgePointsForBook(
+      repos,
+      book,
+      parsed.data.selectedModel,
+      parsed.data.maxChunks
+    );
+    res.json({ summary });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "knowledge generation failed");
+  }
+});
+
+app.post("/api/admin/books/:bookId/chapters/:chapterId/knowledge/generate", async (req, res) => {
+  const book = repos.books.findById(req.params.bookId);
+  if (!book) return fail(res, 404, "book not found");
+  const chapter = repos.chapters.findById(req.params.chapterId);
+  if (!chapter || chapter.bookId !== book.id) return fail(res, 404, "chapter not found");
+  const parsed = knowledgeGenerationRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return fail(res, 400, parsed.error.message);
+  try {
+    const summary = await generateKnowledgePointsForChapter(
+      repos,
+      book,
+      chapter,
+      parsed.data.selectedModel,
+      parsed.data.maxChunks
+    );
+    res.json({ summary });
+  } catch (err) {
+    fail(res, 500, err instanceof Error ? err.message : "chapter knowledge generation failed");
   }
 });
 

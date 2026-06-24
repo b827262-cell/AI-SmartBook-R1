@@ -56,6 +56,16 @@ export function makeSmartBookNoteRepo(db: Db) {
         .map(toNote);
     },
 
+    findByBookIdAndSourceMessageId(bookId: string, sourceMessageId: string): SmartBookNote | null {
+      const row = db
+        .select()
+        .from(smartBookNotes)
+        .where(eq(smartBookNotes.bookId, bookId))
+        .all()
+        .find((candidate) => candidate.sourceMessageId === sourceMessageId);
+      return row ? toNote(row) : null;
+    },
+
     findById(id: string): SmartBookNote | null {
       const row = db.select().from(smartBookNotes).where(eq(smartBookNotes.id, id)).get();
       return row ? toNote(row) : null;

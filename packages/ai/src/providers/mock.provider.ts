@@ -3,6 +3,7 @@ import { SPLIT_BOOK_TASK } from "../prompts/split-book.prompt";
 import { BUILD_CHAPTERS_TASK } from "../prompts/build-chapters.prompt";
 import { SUMMARIZE_CHAPTER_TASK } from "../prompts/summarize-chapter.prompt";
 import { BOOK_QA_TASK } from "../prompts/book-qa.prompt";
+import { KNOWLEDGE_GENERATION_TASK } from "../prompts/knowledge-generation.prompt";
 
 /**
  * Deterministic provider used by default. It recognises the task markers
@@ -40,6 +41,27 @@ export class MockAiProvider implements AiProvider {
         return "目前書本內容中找不到明確答案，建議換個關鍵字再問一次。";
       }
       return `（mock 回答）根據書本內容，${q.replace("Question:", "").trim()} 的重點如下：請參考上方引用段落的說明。`;
+    }
+
+    if (system.includes(KNOWLEDGE_GENERATION_TASK)) {
+      return JSON.stringify([
+        {
+          title: "財務報導的基本目的",
+          summary: "財務報導的核心目的在於提供對投資與決策有用的資訊。使用者可據此評估企業的資源、義務與績效變化。這些資訊也有助於預測未來現金流量。",
+          keywords: ["財務報導", "決策有用性", "現金流量"],
+          pageNumber: 1,
+          sourceRef: "mock-source-1",
+          confidence: 0.86
+        },
+        {
+          title: "財務報表表達的一致性",
+          summary: "財務報表在表達上需要維持分類與揭露的一致性，才能提升可比較性。若分類方式頻繁變動，使用者將難以追蹤企業表現。適當揭露可降低誤讀風險。",
+          keywords: ["財務報表", "一致性", "可比較性"],
+          pageNumber: 2,
+          sourceRef: "mock-source-2",
+          confidence: 0.82
+        }
+      ]);
     }
 
     return `[mock-ai] ${input.prompt.slice(0, 300)}`;
