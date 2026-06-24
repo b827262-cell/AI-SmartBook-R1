@@ -249,6 +249,26 @@ export function BookReaderPage() {
   const [selectedOutlineId, setSelectedOutlineId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ReaderTabKey>("smart-book");
   const [collapsed, setCollapsed] = useState(false);
+  const [readerFeatures, setReaderFeatures] = useState<{
+    noteFeatures: {
+      smartNotesEnabled: boolean;
+      pasteBackNotesEnabled: boolean;
+      pasteBackAiNotesEnabled: boolean;
+      screenshotAskAiEnabled: boolean;
+    };
+    pdfTools: {
+      highlightEnabled: boolean;
+      penEnabled: boolean;
+      lineEnabled: boolean;
+      rectangleEnabled: boolean;
+      circleEnabled: boolean;
+      stickyNoteEnabled: boolean;
+      eraserEnabled: boolean;
+    };
+  }>({
+    noteFeatures: { smartNotesEnabled: true, pasteBackNotesEnabled: true, pasteBackAiNotesEnabled: true, screenshotAskAiEnabled: true },
+    pdfTools: { highlightEnabled: true, penEnabled: true, lineEnabled: true, rectangleEnabled: true, circleEnabled: true, stickyNoteEnabled: true, eraserEnabled: true }
+  });
   // The right column shows the AI Q&A panel, the Smart Notes panel, or nothing.
   // These are mutually exclusive so the PDF grows when both are collapsed.
   const [rightPanel, setRightPanel] = useState<"ai" | "notes" | null>("ai");
@@ -521,6 +541,19 @@ export function BookReaderPage() {
     setShowPageJumpBar(false);
     setShowMobileControls(true);
   }, [bookId]);
+
+  useEffect(() => {
+    studentClient
+      .getReaderFeatures()
+      .then((res) => {
+        if (res && res.noteFeatures && res.pdfTools) {
+          setReaderFeatures(res);
+        }
+      })
+      .catch(() => {
+        // Fallback to all true (already set in initial state)
+      });
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -1051,6 +1084,7 @@ export function BookReaderPage() {
       <div className="reader-workbench">
         <ReaderTopBar book={book as StudentBook} onToggleHistory={scrollToChat} />
         <ReaderTabs
+          features={readerFeatures}
           active={mobilePanel === "notes" ? "smart-note" : activeTab}
           onChange={(tab) => {
             if (tab === "smart-note") {
@@ -1065,6 +1099,7 @@ export function BookReaderPage() {
         {activeTab === "smart-book" ? (
           <>
             <PdfReaderToolbar
+              features={readerFeatures}
               outlineNodes={flatOutline}
               activeNodeId={activeOutlineId}
               onSelectOutlineNode={selectOutlineNode}
