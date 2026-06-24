@@ -22,6 +22,14 @@ export const RATIO_TOC_WIDTH: Record<ReaderRatio, number> = {
 
 /** Discrete zoom percentages applied to the PDF.js render scale. Default 100. */
 export const ZOOM_OPTIONS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
+const PEN_WIDTH_OPTIONS = [2, 4, 7] as const;
+const PEN_COLORS = [
+  { label: "黑", value: "#1f2937" },
+  { label: "藍", value: "#1d4ed8" },
+  { label: "紅", value: "#dc2626" },
+  { label: "綠", value: "#16a34a" },
+  { label: "紫", value: "#7c3aed" }
+];
 
 type ReaderToolbarIconMode =
   | "textSelection"
@@ -129,6 +137,12 @@ export function PdfReaderToolbar({
   onScreenshotAsk,
   maskMode,
   onToggleMask,
+  penMode,
+  penWidth,
+  penColor,
+  onTogglePen,
+  onSelectPenWidth,
+  onSelectPenColor,
   features
 }: {
   outlineNodes: ReaderOutlineNode[];
@@ -159,6 +173,12 @@ export function PdfReaderToolbar({
   onScreenshotAsk: () => void;
   maskMode: boolean;
   onToggleMask: () => void;
+  penMode: boolean;
+  penWidth: number;
+  penColor: string;
+  onTogglePen: () => void;
+  onSelectPenWidth: (width: number) => void;
+  onSelectPenColor: (color: string) => void;
   features: {
     noteFeatures: {
       smartNotesEnabled: boolean;
@@ -351,10 +371,44 @@ export function PdfReaderToolbar({
       )}
 
       {features.pdfTools.penEnabled && (
-        <button type="button" className="tool-btn reader-action-btn" title="筆" onClick={() => {}}>
+        <button
+          type="button"
+          className={`tool-btn reader-action-btn ${penMode ? "active" : ""}`}
+          title="筆"
+          onClick={onTogglePen}
+        >
           <span style={{ marginRight: 6 }}>🖊️</span>筆
         </button>
       )}
+      {features.pdfTools.penEnabled && penMode ? (
+        <span className="pdf-pen-settings" aria-label="筆工具設定">
+          <span className="pdf-pen-setting-label">細</span>
+          {PEN_WIDTH_OPTIONS.map((widthOption) => (
+            <button
+              key={widthOption}
+              type="button"
+              className={`tool-btn reader-action-btn ${penWidth === widthOption ? "active" : ""}`}
+              onClick={() => onSelectPenWidth(widthOption)}
+            >
+              {widthOption}
+            </button>
+          ))}
+          <span className="pdf-pen-setting-label">色</span>
+          {PEN_COLORS.map(({ label, value }) => (
+            <button
+              key={value}
+              type="button"
+              className={`tool-btn reader-action-btn pdf-pen-color-btn ${penColor === value ? "active" : ""}`}
+              style={{ backgroundColor: value }}
+              title={`筆顏色 ${label}`}
+              onClick={() => onSelectPenColor(value)}
+              aria-label={`筆顏色 ${label}`}
+            >
+              <span className="visually-hidden">{label}</span>
+            </button>
+          ))}
+        </span>
+      ) : null}
 
       {features.pdfTools.lineEnabled && (
         <button type="button" className="tool-btn reader-action-btn" title="直線" onClick={() => {}}>

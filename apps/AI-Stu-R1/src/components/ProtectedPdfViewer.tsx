@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 // Vite resolves this to a hashed worker asset URL at build time.
@@ -7,6 +7,8 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const WATERMARK_TILES = Array.from({ length: 8 }, (_, i) => i);
+type PenPoint = { x: number; y: number };
+type PenStroke = { color: string; width: number; points: PenPoint[] };
 // Cap the canvas backing-store so very high zoom does not hit browser limits.
 // Lowered to 16M for safer mobile rendering.
 const MAX_CANVAS_PIXELS = 16_777_216;
@@ -30,6 +32,10 @@ export function ProtectedPdfViewer({
   zoom,
   watermarkText,
   selectable = false,
+  penEnabled = false,
+  penMode = false,
+  penWidth,
+  penColor,
   onPageCount,
   onError,
   onSelectedText,
@@ -40,6 +46,10 @@ export function ProtectedPdfViewer({
   zoom: number;
   watermarkText: string;
   selectable?: boolean;
+  penEnabled?: boolean;
+  penMode?: boolean;
+  penWidth?: number;
+  penColor?: string;
   onPageCount?: (count: number) => void;
   onError?: (message: string) => void;
   onSelectedText?: (text: string) => void;
@@ -47,10 +57,14 @@ export function ProtectedPdfViewer({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
+  const penCanvasRef = useRef<HTMLCanvasElement>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
   const textLayerTaskRef = useRef<{ cancel: () => void } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const penStrokeMapRef = useRef<Record<number, PenStroke[]>>({});
+  const currentPenStrokeRef = useRef<PenStroke | null>(null);
+  const isDrawingPenRef = useRef(false);
   const [containerWidth, setContainerWidth] = useState(-1);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [message, setMessage] = useState("");
@@ -76,6 +90,163 @@ export function ProtectedPdfViewer({
       }
     };
   }, []);
+
+  function clamp01(value: number): number {
+    return Math.min(1, Math.max(0, value));
+  }
+
+  function penScale(): number {
+    return Math.min(2, window.devicePixelRatio || 1);
+  }
+
+  function ensurePenCanvasPageSpace() {
+    const canvas = penCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const dpr = penScale();
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    canvas.style.width = `${Math.floor(rect.width)}px`;
+    canvas.style.height = `${Math.floor(rect.height)}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+  }
+
+  function drawSegment(
+    ctx: CanvasRenderingContext2D,
+    rect: DOMRect,
+    from: PenPoint,
+    to: PenPoint,
+    stroke: PenStroke
+  ) {
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = stroke.width;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(from.x * rect.width, from.y * rect.height);
+    ctx.lineTo(to.x * rect.width, to.y * rect.height);
+    ctx.stroke();
+  }
+
+  function drawPenStroke(ctx: CanvasRenderingContext2D, rect: DOMRect, stroke: PenStroke) {
+    const points = stroke.points;
+    if (points.length === 0) return;
+    if (points.length === 1) {
+      const point = points[0];
+      const x0 = point.x * rect.width;
+      const y0 = point.y * rect.height;
+      ctx.fillStyle = stroke.color;
+      ctx.beginPath();
+      ctx.arc(x0, y0, Math.max(0.5, stroke.width / 2), 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = stroke.width;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const a = points[i];
+      const b = points[i + 1];
+      ctx.moveTo(a.x * rect.width, a.y * rect.height);
+      ctx.lineTo(b.x * rect.width, b.y * rect.height);
+    }
+    ctx.stroke();
+  }
+
+  function redrawPenForPage(pageNumber: number) {
+    const canvas = penCanvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    if (!canvas || !rect || rect.width <= 0 || rect.height <= 0) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const pageStrokes = penStrokeMapRef.current[pageNumber];
+
+    ensurePenCanvasPageSpace();
+    if (!pageStrokes || pageStrokes.length === 0) return;
+
+    ctx.setTransform(penScale(), 0, 0, penScale(), 0, 0);
+    for (const stroke of pageStrokes) {
+      drawPenStroke(ctx, rect, stroke);
+    }
+  }
+
+  function pointFromEvent(event: PointerEvent<HTMLCanvasElement>): PenPoint {
+    const canvas = penCanvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: clamp01((event.clientX - rect.left) / rect.width),
+      y: clamp01((event.clientY - rect.top) / rect.height)
+    };
+  }
+
+  function onPenPointerDown(event: PointerEvent<HTMLCanvasElement>) {
+    if (!penEnabled || !penMode) return;
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = pointFromEvent(event);
+    const stroke: PenStroke = {
+      color: penColor ?? "#1f2937",
+      width: penWidth ?? 4,
+      points: [point]
+    };
+    const list = penStrokeMapRef.current[page] ?? [];
+    list.push(stroke);
+    penStrokeMapRef.current[page] = list;
+    currentPenStrokeRef.current = stroke;
+    isDrawingPenRef.current = true;
+    ensurePenCanvasPageSpace();
+    const rect = penCanvasRef.current?.getBoundingClientRect();
+    const ctx = penCanvasRef.current?.getContext("2d");
+    if (ctx && rect) {
+      ctx.setTransform(penScale(), 0, 0, penScale(), 0, 0);
+      drawPenStroke(ctx, rect, stroke);
+    }
+  }
+
+  function onPenPointerMove(event: PointerEvent<HTMLCanvasElement>) {
+    if (!penEnabled || !penMode || !isDrawingPenRef.current || !currentPenStrokeRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next = pointFromEvent(event);
+    const stroke = currentPenStrokeRef.current;
+    const prev = stroke.points[stroke.points.length - 1];
+    if (prev?.x === next.x && prev?.y === next.y) return;
+    stroke.points.push(next);
+    const rect = penCanvasRef.current?.getBoundingClientRect();
+    const ctx = penCanvasRef.current?.getContext("2d");
+    if (!ctx || !rect) return;
+    ctx.setTransform(penScale(), 0, 0, penScale(), 0, 0);
+    drawSegment(ctx, rect, prev, next, stroke);
+  }
+
+  function onPenPointerUp(event: PointerEvent<HTMLCanvasElement>) {
+    if (!isDrawingPenRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    isDrawingPenRef.current = false;
+    currentPenStrokeRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function onPenPointerCancel(event: PointerEvent<HTMLCanvasElement>) {
+    if (!isDrawingPenRef.current) return;
+    onPenPointerUp(event);
+  }
 
   // Measure container width to avoid calculating/rendering before layout is ready.
   useEffect(() => {
@@ -125,6 +296,21 @@ export function ProtectedPdfViewer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blob]);
+
+  useEffect(() => {
+    if (status !== "ready" || !penEnabled) return;
+    const timer = requestAnimationFrame(() => {
+      redrawPenForPage(page);
+    });
+    return () => cancelAnimationFrame(timer);
+  }, [status, page, containerWidth, zoom, penEnabled, penMode]);
+
+  // Abort ongoing stroke if pen drawing is turned off.
+  useEffect(() => {
+    if (penEnabled && penMode) return;
+    isDrawingPenRef.current = false;
+    currentPenStrokeRef.current = null;
+  }, [penEnabled, penMode]);
 
   // Render the current page at the current zoom. Re-runs on page/zoom change.
   // Render the current page onto the canvas when ready.
@@ -215,6 +401,7 @@ export function ProtectedPdfViewer({
             onPageHasText?.(false);
           }
         }
+        redrawPenForPage(targetPage);
       } catch (err) {
         // A cancelled render (page/zoom changed mid-render) is expected; ignore.
         const name = err instanceof Error ? err.name : "";
@@ -257,7 +444,7 @@ export function ProtectedPdfViewer({
           <p className="error-text pdf-canvas-status">{message}</p>
         )}
         {textLayerError && (
-          <p className="error-text pdf-canvas-status" style={{ position: 'absolute', zIndex: 10, top: 16 }}>
+          <p className="error-text pdf-canvas-status" style={{ position: "absolute", zIndex: 10, top: 16 }}>
             此裝置目前無法啟用文字選取，但仍可閱讀 PDF。
           </p>
         )}
@@ -280,6 +467,14 @@ export function ProtectedPdfViewer({
             className={`pdf-text-layer ${selectable ? "selectable" : ""}`}
             onMouseUp={reportSelection}
             onPointerUp={reportSelection}
+          />
+          <canvas
+            ref={penCanvasRef}
+            className={`pdf-pen-overlay ${penEnabled && penMode ? "is-enabled" : ""}`}
+            onPointerDown={onPenPointerDown}
+            onPointerMove={onPenPointerMove}
+            onPointerUp={onPenPointerUp}
+            onPointerCancel={onPenPointerCancel}
           />
         </div>
       </div>
