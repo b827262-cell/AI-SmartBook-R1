@@ -13,3 +13,5 @@ data/*.db
 data/*.sqlite
 uploads
 exports/*.json
+apps/AI-adm-D1/data/
+.claude/
