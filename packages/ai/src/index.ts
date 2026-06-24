@@ -8,3 +8,4 @@ export { buildSplitBookPrompt, SPLIT_BOOK_TASK } from "./prompts/split-book.prom
 export { buildChaptersPrompt, BUILD_CHAPTERS_TASK } from "./prompts/build-chapters.prompt";
 export { buildSummarizeChapterPrompt, SUMMARIZE_CHAPTER_TASK } from "./prompts/summarize-chapter.prompt";
 export { buildBookQaPrompt, BOOK_QA_TASK } from "./prompts/book-qa.prompt";
+export { buildKnowledgeGenerationPrompt, KNOWLEDGE_GENERATION_TASK } from "./prompts/knowledge-generation.prompt";

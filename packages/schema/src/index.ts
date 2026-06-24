@@ -7,6 +7,7 @@ export * from "./readerOutline.schema";
 export * from "./chat.schema";
 export * from "./smartBookNote.schema";
 export * from "./aiJob.schema";
+export * from "./knowledgeGeneration.schema";
 export * from "./qaLog.schema";
 export * from "./sync.schema";
 export * from "./appearance.schema";
