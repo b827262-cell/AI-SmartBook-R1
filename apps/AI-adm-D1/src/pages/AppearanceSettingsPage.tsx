@@ -24,14 +24,28 @@ type ImageUploadableField =
 
 const IMAGE_ACCEPT_TYPES = "image/png,image/jpeg,image/webp,image/svg+xml";
 
-const IMPORTABLE_ICON_FIELDS = [
+type ImportableIconField = {
+  field: ImageUploadableField;
+  label: string;
+  fixedFile: string;
+  section: "系統圖片" | "筆記功能圖示";
+  fallback: string;
+  placeholder: string;
+  patch?: (url: string) => Partial<AppearanceSettings>;
+};
+
+const IMPORTABLE_ICON_FIELDS: ImportableIconField[] = [
   {
     field: "headerLogoUrl",
     label: "Logo 圖片（換圖）",
     fixedFile: "1.png",
     section: "系統圖片",
     fallback: "iB",
-    placeholder: "https://… 或上傳"
+    placeholder: "https://… 或上傳",
+    patch: (url) => ({
+      headerLogoUrl: url,
+      studentHeaderBrandLogoUrl: url
+    })
   },
   {
     field: "bannerIconUrl",
@@ -63,7 +77,11 @@ const IMPORTABLE_ICON_FIELDS = [
     fixedFile: "5.png",
     section: "系統圖片",
     fallback: "🏠",
-    placeholder: "https://…（icon 模式為 image 時使用）"
+    placeholder: "https://…（icon 模式為 image 時使用）",
+    patch: (url) => ({
+      studentHeaderHomeButtonIconUrl: url,
+      studentHeaderHomeButtonIconMode: "image"
+    })
   },
   {
     field: "textSelectionIconUrl",
@@ -113,18 +131,11 @@ const IMPORTABLE_ICON_FIELDS = [
     fallback: "🙈",
     placeholder: "https://… 或上傳"
   }
-] as const satisfies readonly {
-  field: ImageUploadableField;
-  label: string;
-  fixedFile: string;
-  section: "系統圖片" | "筆記功能圖示";
-  fallback: string;
-  placeholder: string;
-}[];
+] ;
 
 type ImportableImageField = (typeof IMPORTABLE_ICON_FIELDS)[number]["field"];
 
-type ImportImageMap = Record<ImportableImageField, string>;
+type ImportImageMap = Partial<AppearanceSettings>;
 
 /** Image with graceful fallback so an invalid URL never breaks the page. */
 function SafeIcon({ url, size, fallback }: { url: string; size: number; fallback: string }) {
@@ -244,7 +255,11 @@ export function AppearanceSettingsPage() {
     try {
       const url = await uploadImage(file);
       if (!url) throw new Error("無法取得上傳結果");
-      setField(field, url as AppearanceSettings[typeof field]);
+      const config = IMPORTABLE_ICON_FIELDS.find((item) => item.field === field);
+      const patch = config?.patch
+        ? config.patch(url)
+        : ({ [field]: url } as Partial<AppearanceSettings>);
+      setForm((f) => ({ ...f, ...patch }));
       setToast({ kind: "ok", text: "圖片已上傳，請記得按儲存" });
     } catch (e) {
       setToast({ kind: "err", text: `上傳失敗：${e instanceof Error ? e.message : String(e)}` });
@@ -271,10 +286,11 @@ export function AppearanceSettingsPage() {
     }
     setToast(null);
 
-    const uploaded: Partial<ImportImageMap> = {};
+    const uploaded: ImportImageMap = {};
     const notMatched: string[] = [];
     const failedUploads: string[] = [];
-    const matchedSet = new Set<ImageUploadableField>();
+    const matchedSet = new Set<string>();
+    const importedFiles = new Set<string>();
 
     for (const file of files) {
       const config = importableByFileName.get(file.name.toLowerCase());
@@ -284,7 +300,7 @@ export function AppearanceSettingsPage() {
       }
 
       const field = config.field;
-      if (matchedSet.has(field)) {
+      if (matchedSet.has(config.fixedFile)) {
         notMatched.push(file.name);
         continue;
       }
@@ -292,20 +308,22 @@ export function AppearanceSettingsPage() {
       try {
         const url = await uploadImage(file);
         if (url) {
-          uploaded[field] = url;
-          matchedSet.add(field);
+          const patch = config.patch ? config.patch(url) : ({ [field]: url } as Partial<AppearanceSettings>);
+          Object.assign(uploaded, patch);
+          matchedSet.add(config.fixedFile);
+          importedFiles.add(config.fixedFile);
         }
       } catch {
         failedUploads.push(file.name);
       }
     }
 
-    const importResultCount = Object.keys(uploaded).length;
+    const importResultCount = importedFiles.size;
     if (importResultCount > 0) {
       setForm((f) => ({ ...f, ...uploaded }));
     }
 
-    const missing = IMPORTABLE_ICON_FIELDS.filter((item) => !matchedSet.has(item.field)).map((item) => item.fixedFile);
+    const missing = IMPORTABLE_ICON_FIELDS.filter((item) => !matchedSet.has(item.fixedFile)).map((item) => item.fixedFile);
     const summary: string[] = [];
     if (importResultCount > 0) {
       summary.push(`已匯入 ${importResultCount} 個圖示。`);

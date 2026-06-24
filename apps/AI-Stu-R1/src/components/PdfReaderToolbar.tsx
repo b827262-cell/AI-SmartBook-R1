@@ -1,4 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
+import { useAppearance } from "../appearance";
 import type { ReaderOutlineNode } from "@ai-smartbook/schema";
 
 /** Quick layout preset: PDF area vs AI area. PDF is the first value. */
@@ -21,6 +22,77 @@ export const RATIO_TOC_WIDTH: Record<ReaderRatio, number> = {
 
 /** Discrete zoom percentages applied to the PDF.js render scale. Default 100. */
 export const ZOOM_OPTIONS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
+
+type ReaderToolbarIconMode =
+  | "textSelection"
+  | "smartNote"
+  | "pasteBackNote"
+  | "pasteBackAiNote"
+  | "screenshot"
+  | "hideAnswer";
+
+type ReaderToolbarIconPayload = {
+  url: string;
+  fallback: string;
+};
+
+function ReaderToolbarIcon({
+  mode,
+  fallback
+}: {
+  mode: ReaderToolbarIconMode;
+  fallback: string;
+}) {
+  const a = useAppearance();
+  const fallbackConfig: ReaderToolbarIconPayload[] = [
+    { url: a.textSelectionIconUrl, fallback },
+    { url: a.smartNoteIconUrl, fallback },
+    { url: a.pasteBackNoteIconUrl, fallback },
+    { url: a.pasteBackAiNoteIconUrl, fallback },
+    { url: a.screenshotAskAiIconUrl, fallback },
+    { url: a.hideAnswerIconUrl, fallback }
+  ];
+
+  const key = (() => {
+    switch (mode) {
+      case "textSelection":
+        return 0;
+      case "smartNote":
+        return 1;
+      case "pasteBackNote":
+        return 2;
+      case "pasteBackAiNote":
+        return 3;
+      case "screenshot":
+        return 4;
+      case "hideAnswer":
+        return 5;
+      default:
+        return 0;
+    }
+  })();
+  const icon = fallbackConfig[key];
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setFailed(false), [icon.url]);
+
+  if (icon.url && !failed) {
+    return (
+      <img
+        src={icon.url}
+        alt=""
+        style={{ width: 16, height: 16, objectFit: "contain", marginRight: 6 }}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span style={{ width: 16, height: 16, marginRight: 6, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      {icon.fallback}
+    </span>
+  );
+}
 
 /**
  * PDF-native reader toolbar. Every control drives the protected PDF viewer
@@ -200,7 +272,8 @@ export function PdfReaderToolbar({
         onClick={onToggleSelection}
         title="文字選取：拖曳選取 PDF 文字後可複製 / 加入筆記 / 問AI重點"
       >
-        🔖 {selectionMode ? "結束選取" : "文字選取"}
+        <ReaderToolbarIcon mode="textSelection" fallback="🔖" />
+        {selectionMode ? "結束選取" : "文字選取"}
       </button>
 
       <button
@@ -209,7 +282,8 @@ export function PdfReaderToolbar({
         onClick={onToggleNotes}
         title="智能筆記"
       >
-        📝 {notesOpen ? "收合筆記" : "智能筆記"}
+        <ReaderToolbarIcon mode="smartNote" fallback="🧠" />
+        {notesOpen ? "收合筆記" : "智能筆記"}
       </button>
 
       <span className="tool-divider" aria-hidden="true" />
@@ -220,7 +294,8 @@ export function PdfReaderToolbar({
         onClick={onStickyNote}
         title="貼圖筆記：開啟筆記畫板，記錄此頁筆記"
       >
-        📌 貼圖筆記
+        <ReaderToolbarIcon mode="pasteBackNote" fallback="📌" />
+        貼圖筆記
       </button>
 
       <button
@@ -229,7 +304,8 @@ export function PdfReaderToolbar({
         onClick={onPasteBackNote}
         title="貼回AI筆記：開啟外部 AI 平台後，將 AI 回答貼回此筆記欄"
       >
-        🤖 貼回AI筆記
+        <ReaderToolbarIcon mode="pasteBackAiNote" fallback="🤖" />
+        貼回AI筆記
       </button>
 
       <button
@@ -238,7 +314,8 @@ export function PdfReaderToolbar({
         onClick={onScreenshotAsk}
         title="截圖問AI：選取 PDF 區域截圖後，手動複製提示詞問 AI"
       >
-        📷 截圖問AI
+        <ReaderToolbarIcon mode="screenshot" fallback="📸" />
+        截圖問AI
       </button>
 
       <button
@@ -247,7 +324,8 @@ export function PdfReaderToolbar({
         onClick={onToggleMask}
         title="遮答案：拖曳選取區域，覆蓋白色方塊遮住答案"
       >
-        🙈 {maskMode ? "結束遮答案" : "遮答案"}
+        <ReaderToolbarIcon mode="hideAnswer" fallback="🙈" />
+        {maskMode ? "結束遮答案" : "遮答案"}
       </button>
 
       <span className="tool-spacer" />
