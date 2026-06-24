@@ -19,6 +19,8 @@ interface ExternalAiAskModalProps {
   extraNotes?: string;
   initialTemplate?: PromptTemplateId;
   onClose: () => void;
+  /** When true, renders inline panel content (no fixed backdrop). */
+  inPanel?: boolean;
 }
 
 export function ExternalAiAskModal({
@@ -29,7 +31,8 @@ export function ExternalAiAskModal({
   selectedText,
   extraNotes,
   initialTemplate = "summary",
-  onClose
+  onClose,
+  inPanel = false
 }: ExternalAiAskModalProps) {
   const [templateId, setTemplateId] = useState<PromptTemplateId>(initialTemplate);
   const [status, setStatus] = useState("");
@@ -64,21 +67,20 @@ export function ExternalAiAskModal({
     }
   }
 
-  return (
-    <div className="external-ai-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="external-ai-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="外部 AI 問題"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="external-ai-header">
-          <h3>外部 AI 問答（不自動上傳）</h3>
-          <button type="button" className="tool-btn" onClick={onClose}>
-            關閉
-          </button>
-        </div>
+  const inner = (
+    <div
+      className={inPanel ? "external-ai-panel-content" : "external-ai-modal"}
+      role="dialog"
+      aria-modal={!inPanel}
+      aria-label="外部 AI 問題"
+      onClick={inPanel ? undefined : (event) => event.stopPropagation()}
+    >
+      <div className="external-ai-header">
+        <h3>外部 AI 問答（不自動上傳）</h3>
+        <button type="button" className="tool-btn" onClick={onClose}>
+          關閉
+        </button>
+      </div>
 
         <p className="external-ai-intro">
           提示詞與影像不會放入網址，請先複製提示詞與影像，然後到目標 AI 站點貼上。
@@ -141,6 +143,12 @@ export function ExternalAiAskModal({
           />
         ) : null}
       </div>
+  );
+
+  if (inPanel) return inner;
+  return (
+    <div className="external-ai-backdrop" role="presentation" onClick={onClose}>
+      {inner}
     </div>
   );
 }

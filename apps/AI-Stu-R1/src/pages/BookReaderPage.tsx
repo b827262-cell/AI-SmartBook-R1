@@ -29,6 +29,7 @@ import { StickyNoteModal } from "../components/StickyNoteModal";
 import { ExternalAiAskModal } from "../components/ExternalAiAskModal";
 import { PasteBackNotePanel } from "../components/PasteBackNotePanel";
 import { AnswerMaskLayer, type MaskRect } from "../components/AnswerMaskLayer";
+import { PdfCropOverlay } from "../components/PdfCropOverlay";
 
 const QUICK_PROMPTS = [
   "整理這頁重點",
@@ -271,7 +272,7 @@ export function BookReaderPage() {
   });
   // The right column shows the AI Q&A panel, the Smart Notes panel, or nothing.
   // These are mutually exclusive so the PDF grows when both are collapsed.
-  const [rightPanel, setRightPanel] = useState<"ai" | "notes" | null>("ai");
+  const [rightPanel, setRightPanel] = useState<"ai" | "notes" | "paste-back" | "screenshot-ask" | null>("ai");
   const [tocWidth, setTocWidth] = useState(() =>
     readStoredWidth(TOC_WIDTH_KEY, TOC_DEFAULT, TOC_MIN, TOC_MAX)
   );
@@ -307,7 +308,9 @@ export function BookReaderPage() {
   // ---- Four reader action states ------------------------------------------
   const [showStickyNote, setShowStickyNote] = useState(false);
   const [showPasteBack, setShowPasteBack] = useState(false);
+  const [showCropOverlay, setShowCropOverlay] = useState(false);
   const [showScreenshotAsk, setShowScreenshotAsk] = useState(false);
+  const [cropScreenshotImage, setCropScreenshotImage] = useState<string | undefined>(undefined);
   const [maskMode, setMaskMode] = useState(false);
   const [masks, setMasks] = useState<Record<number, MaskRect[]>>({});
   const [viewportWidth, setViewportWidth] = useState(() =>
@@ -695,6 +698,16 @@ export function BookReaderPage() {
       return;
     }
     setRightPanel(panel);
+  }
+
+  function handleCropConfirm(dataUrl: string | undefined) {
+    setShowCropOverlay(false);
+    setCropScreenshotImage(dataUrl);
+    if (isMobile) {
+      setShowScreenshotAsk(true);
+    } else {
+      setRightPanel("screenshot-ask");
+    }
   }
 
   function revealAiPanelWithPrefill(prefill: { text: string; nonce: number } | null) {
@@ -1145,8 +1158,14 @@ export function BookReaderPage() {
               onNextPage={nextPage}
               onAskAi={scrollToChat}
               onStickyNote={() => setShowStickyNote(true)}
-              onPasteBackNote={() => setShowPasteBack(true)}
-              onScreenshotAsk={() => setShowScreenshotAsk(true)}
+              onPasteBackNote={() => {
+                if (isMobile) { setShowPasteBack(true); }
+                else { setRightPanel((p) => (p === "paste-back" ? null : "paste-back")); }
+              }}
+              onScreenshotAsk={() => {
+                setCropScreenshotImage(undefined);
+                setShowCropOverlay(true);
+              }}
               maskMode={maskMode}
               onToggleMask={() => setMaskMode((v) => !v)}
             />
@@ -1252,6 +1271,12 @@ export function BookReaderPage() {
                       onClearPageMasks={handleClearPageMasks}
                     />
                   )}
+                  {showCropOverlay && (
+                    <PdfCropOverlay
+                      onConfirm={handleCropConfirm}
+                      onCancel={() => setShowCropOverlay(false)}
+                    />
+                  )}
 
                   {showPageJumpBar ? (
                     <div className="reader-page-jump-bar" onPointerDown={(event) => event.stopPropagation()}>
@@ -1327,6 +1352,31 @@ export function BookReaderPage() {
                     compact
                     onCollapse={() => setRightPanel(null)}
                     onNavigate={handleNoteNavigate}
+                  />
+                </div>
+              )}
+              {!isMobile && rightPanel === "paste-back" && (
+                <div className="reader-notes-col reader-paste-back-col" style={{ width: aiWidth }}>
+                  <PasteBackNotePanel
+                    bookTitle={book.title}
+                    pageLabel={book.pdfFileId ? `P${pdfPage}` : null}
+                    chapterTitle={activeChapterTitle}
+                    onSave={handlePasteBackSave}
+                    onClose={() => setRightPanel(null)}
+                    inPanel
+                  />
+                </div>
+              )}
+              {!isMobile && rightPanel === "screenshot-ask" && (
+                <div className="reader-notes-col reader-screenshot-ask-col" style={{ width: aiWidth }}>
+                  <ExternalAiAskModal
+                    isOpen
+                    bookTitle={book.title}
+                    pageLabel={book.pdfFileId ? `P${pdfPage}` : undefined}
+                    screenshotImage={cropScreenshotImage}
+                    selectedText={selectedText || undefined}
+                    onClose={() => setRightPanel(null)}
+                    inPanel
                   />
                 </div>
               )}
