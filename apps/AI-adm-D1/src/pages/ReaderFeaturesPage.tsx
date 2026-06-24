@@ -89,8 +89,17 @@ export function ReaderFeaturesPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    void http<ReaderFeatureSettings>("/api/admin/settings/reader-features")
-      .then(setSettings)
+    void http<Partial<ReaderFeatureSettings>>("/api/admin/settings/reader-features")
+      .then((raw) => {
+        // Deep-merge with DEFAULT so missing nested keys (e.g. extraFeatures absent in
+        // old DB entries) never cause "Cannot read properties of undefined".
+        setSettings({
+          noteFeatures: { ...DEFAULT.noteFeatures, ...(raw.noteFeatures ?? {}) },
+          pdfTools: { ...DEFAULT.pdfTools, ...(raw.pdfTools ?? {}) },
+          extraFeatures: { ...DEFAULT.extraFeatures, ...(raw.extraFeatures ?? {}) },
+          watermark: { ...DEFAULT.watermark, ...(raw.watermark ?? {}) }
+        });
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
@@ -100,11 +109,16 @@ export function ReaderFeaturesPage() {
     setMsg("");
     setError("");
     try {
-      const saved = await http<ReaderFeatureSettings>("/api/admin/settings/reader-features", {
+      const saved = await http<Partial<ReaderFeatureSettings>>("/api/admin/settings/reader-features", {
         method: "PUT",
         body: JSON.stringify(updated)
       });
-      setSettings(saved);
+      setSettings({
+        noteFeatures: { ...DEFAULT.noteFeatures, ...(saved.noteFeatures ?? {}) },
+        pdfTools: { ...DEFAULT.pdfTools, ...(saved.pdfTools ?? {}) },
+        extraFeatures: { ...DEFAULT.extraFeatures, ...(saved.extraFeatures ?? {}) },
+        watermark: { ...DEFAULT.watermark, ...(saved.watermark ?? {}) }
+      });
       setMsg("設定已儲存。");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
