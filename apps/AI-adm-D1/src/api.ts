@@ -446,7 +446,7 @@ export type AiProviderStatus = {
   lastTestedAt: string | null;
 };
 
-export type OneClickWorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed";
+export type OneClickWorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed" | "fallback_success";
 
 export interface OneClickWorkflowStep {
   key: string;
@@ -536,10 +536,10 @@ export function syncKnowledgePoints(bookId: string): Promise<{ synced: number; m
   return http<{ synced: number; message: string }>(`/api/admin/books/${bookId}/knowledge-points/sync`, { method: "POST" });
 }
 
-export function startOneClickWorkflow(bookId: string, selectedModel: string) {
+export function startOneClickWorkflow(bookId: string, selectedModel: string, knowledgePointCount?: number) {
   return http<{ job: BookAiJob; workflow: OneClickWorkflowState }>(
     `/api/admin/books/${bookId}/one-click-workflow`,
-    { method: "POST", body: JSON.stringify({ selectedModel }) }
+    { method: "POST", body: JSON.stringify({ selectedModel, knowledgePointCount }) }
   );
 }
 

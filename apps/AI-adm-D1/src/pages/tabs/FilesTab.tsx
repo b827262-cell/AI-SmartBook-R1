@@ -255,7 +255,8 @@ export function FilesTab({ bookId }: { bookId: string }) {
   const [tocPageEnd, setTocPageEnd] = useState("6");
   const [genTocResult, setGenTocResult] = useState<GenerateReaderTocResponse | null>(null);
   const [aiStatus, setAiStatus] = useState<AiProviderStatus | null>(null);
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.1-flash-lite");
+  const [knowledgePointCount, setKnowledgePointCount] = useState<number>(100);
   const [workflow, setWorkflow] = useState<OneClickWorkflowState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const jsonUploadRef = useRef<HTMLInputElement>(null);
@@ -615,9 +616,9 @@ export function FilesTab({ bookId }: { bookId: string }) {
 
   async function handleOneClick() {
     await run(async () => {
-      const result = await startOneClickWorkflow(bookId, selectedModel);
+      const result = await startOneClickWorkflow(bookId, selectedModel, knowledgePointCount);
       setWorkflow(result.workflow);
-      setMsg(hasAiKey ? `一鍵流程已啟動，模型：${selectedModel}` : "一鍵流程已啟動，AI 步驟將略過。");
+      setMsg(hasAiKey ? `一鍵流程已啟動，模型：${selectedModel}，知識點數量：${knowledgePointCount}` : "一鍵流程已啟動，AI 步驟將略過。");
     });
   }
 
@@ -686,6 +687,17 @@ export function FilesTab({ bookId }: { bookId: string }) {
                 <option value="gemini-3-flash">Gemini 3 Flash</option>
                 <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                 <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+              </select>
+              <select
+                value={knowledgePointCount}
+                onChange={(e) => setKnowledgePointCount(parseInt(e.target.value, 10))}
+                disabled={!hasAiKey || busy || workflowRunning}
+              >
+                <option value={5}>5 筆知識點</option>
+                <option value={10}>10 筆知識點</option>
+                <option value={20}>20 筆知識點</option>
+                <option value={50}>50 筆知識點</option>
+                <option value={100}>100 筆知識點</option>
               </select>
               <button className="btn" onClick={() => void handleOneClick()} disabled={busy || workflowRunning}>
                 {workflowRunning ? "執行中…" : "一鍵完成"}

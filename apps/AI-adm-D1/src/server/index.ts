@@ -97,7 +97,7 @@ const READER_TOC_SOURCE = "manual_admin_import" as const;
 const ONE_CLICK_QA_PROVIDER = "one_click_workflow";
 const ONE_CLICK_QA_MODEL = "qa_batch_v1";
 
-type WorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed";
+type WorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed" | "fallback_success";
 type WorkflowStepKey =
   | "check_pdf"
   | "check_ai_config"
@@ -1326,7 +1326,7 @@ async function runJob<T>(
   }
 }
 
-async function runOneClickWorkflow(jobId: string, book: Book, selectedModel: string): Promise<void> {
+async function runOneClickWorkflow(jobId: string, book: Book, selectedModel: string, knowledgePointCount?: number): Promise<void> {
   const aiSettings = await getAiSettings();
   let state = createWorkflowState(book.id, selectedModel, aiSettings.hasGoogleApiKey);
   saveWorkflowState(jobId, state, "running");
@@ -1406,7 +1406,9 @@ async function runOneClickWorkflow(jobId: string, book: Book, selectedModel: str
 
       state = updateWorkflowStepState(state, "create_knowledge_points", "running", "正在建立知識點。");
       saveWorkflowState(jobId, state, "running");
-      const knowledgeSummary = await generateKnowledgePointsForBook(repos, book, selectedModel);
+      const requestedPoints = knowledgePointCount ?? 100;
+      // Pass requested points to the generation function (assuming it respects max points/batches)
+      const knowledgeSummary = await generateKnowledgePointsForBook(repos, book, selectedModel, undefined, requestedPoints);
       state = updateWorkflowStepState(
         state,
         "create_knowledge_points",
@@ -1453,20 +1455,53 @@ async function runOneClickWorkflow(jobId: string, book: Book, selectedModel: str
     const detectedPages = flattenReaderOutline(detected.outline)
       .map((node) => node.page)
       .filter((page): page is number => typeof page === "number");
+    
+    let startPage = 1;
+    let endPage = storedIndex.pageCount > 0 ? storedIndex.pageCount : 500;
+    let outline: import("@ai-smartbook/schema").ReaderOutlineNode[] = [];
+    let isFallback = false;
+
     if (detected.outline.length === 0 || detectedPages.length === 0) {
-      throw new Error(detected.warnings[0] ?? "Reader TOC 偵測失敗。");
+      isFallback = true;
+      // Create minimal viable TOC
+      outline = [
+        {
+          id: "fallback-toc-1",
+          level: 1,
+          title: "全書內容",
+          page: startPage,
+          children: []
+        }
+      ];
+    } else {
+      startPage = Math.min(...detectedPages);
+      const finalToc = buildReaderTocFromIndexItems(storedIndex.items, startPage, endPage);
+      if (finalToc.outline.length === 0) {
+        isFallback = true;
+        outline = [
+          {
+            id: "fallback-toc-1",
+            level: 1,
+            title: "全書內容",
+            page: startPage,
+            children: []
+          }
+        ];
+      } else {
+        outline = finalToc.outline;
+      }
     }
-    const startPage = Math.min(...detectedPages);
-    const finalToc = buildReaderTocFromIndexItems(storedIndex.items, startPage, storedIndex.pageCount);
-    if (finalToc.outline.length === 0) {
-      throw new Error(finalToc.warnings[0] ?? "Reader TOC 產生失敗。");
-    }
-    const tocRecord = storeGeneratedReaderTocFromIndex(book, indexRecord, finalToc.outline);
+
+    const tocRecord = storeGeneratedReaderTocFromIndex(book, indexRecord, outline);
+    const tocMsg = isFallback 
+      ? `Reader TOC 已完成（fallback）：未偵測到章節標題，已建立全書內容目錄（${startPage} ～ ${endPage}）。`
+      : `Reader TOC 已建立，起始頁 ${startPage}，結束頁 ${endPage}，共 ${tocRecord.itemCount} 項。`;
+      
     state = updateWorkflowStepState(
       state,
       "generate_reader_toc",
-      "success",
-      `Reader TOC 已建立，起始頁 ${startPage}，結束頁 ${storedIndex.pageCount}，共 ${tocRecord.itemCount} 項。`
+      isFallback ? "fallback_success" : "success",
+      tocMsg
     );
     saveWorkflowState(jobId, state, "running");
 
@@ -2308,15 +2343,17 @@ app.post("/api/admin/books/:bookId/one-click-workflow", async (req, res) => {
     typeof req.body?.selectedModel === "string" && req.body.selectedModel.trim()
       ? req.body.selectedModel.trim()
       : aiSettings.defaultModel;
+  const knowledgePointCount = typeof req.body?.knowledgePointCount === "number" ? req.body.knowledgePointCount : 100;
+  
   const workflow = createWorkflowState(book.id, selectedModel, aiSettings.hasGoogleApiKey);
   const job = repos.aiJobs.create({
     bookId: book.id,
     jobType: "one_click_workflow",
     status: "running",
-    inputJson: JSON.stringify({ selectedModel })
+    inputJson: JSON.stringify({ selectedModel, knowledgePointCount })
   });
   saveWorkflowState(job.id, workflow, "running");
-  void runOneClickWorkflow(job.id, book, selectedModel);
+  void runOneClickWorkflow(job.id, book, selectedModel, knowledgePointCount);
   res.status(202).json({ job, workflow });
 });
 
@@ -3306,7 +3343,7 @@ function writeKpSettings(bookId: string, s: KnowledgePointSettings): void {
 }
 
 function isKnowledgePointNote(note: SmartBookNote): boolean {
-  return note.type === "text" && (note.sourceMessageId?.startsWith(ONE_CLICK_NOTE_SOURCE) ?? false);
+  return note.type === "text" && (note.sourceMessageId?.startsWith("knowledge-point:") ?? false);
 }
 
 // Admin GET — knowledge point list for a book

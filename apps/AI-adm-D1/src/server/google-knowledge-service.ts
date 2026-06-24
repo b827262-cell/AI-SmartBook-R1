@@ -263,7 +263,8 @@ async function runGeneration(
   book: Book,
   chapter: BookChapter | null,
   selectedModel?: string,
-  maxChunks?: number
+  maxChunks?: number,
+  requestedPoints: number = 100
 ): Promise<KnowledgeGenerationSummary> {
   const { file, index } = getLatestSentenceIndexFile(repos, book.id);
   if (!file || !index) {
@@ -342,6 +343,10 @@ async function runGeneration(
             sourceMessageId
           });
           summary.created += 1;
+          
+          if (summary.created >= requestedPoints) {
+            break;
+          }
           continue;
         }
 
@@ -363,6 +368,14 @@ async function runGeneration(
           pageNumber: point.pageNumber ?? null
         });
         summary.updated += 1;
+
+        if (summary.created >= requestedPoints) {
+          break;
+        }
+      }
+      
+      if (summary.created >= requestedPoints) {
+        break;
       }
     } catch (error) {
       summary.failed += 1;
@@ -391,7 +404,8 @@ export async function generateKnowledgePointsForBook(
   repos: Repositories,
   book: Book,
   selectedModel?: string,
-  maxChunks?: number
+  maxChunks?: number,
+  requestedPoints: number = 100
 ): Promise<KnowledgeGenerationSummary> {
   const initial = await getKnowledgeGenerationStatus(repos, book.id);
   saveStatus(repos, {
@@ -405,7 +419,7 @@ export async function generateKnowledgePointsForBook(
     message: "running knowledge generation for book"
   });
 
-  const summary = await runGeneration(repos, book, null, selectedModel, maxChunks);
+  const summary = await runGeneration(repos, book, null, selectedModel, maxChunks, requestedPoints);
   saveStatus(repos, {
     bookId: book.id,
     provider: "google",
