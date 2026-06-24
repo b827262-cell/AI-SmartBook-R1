@@ -18,7 +18,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { label: "首頁", to: "/admin", end: true, enabled: true },
       { label: "帳戶管理", to: "/admin/accounts", end: true, enabled: true },
       { label: "介面設定", to: "/admin/appearance", end: true, enabled: true },
-      { label: "AI 模型設定", to: "/admin/settings/ai", end: true, enabled: true, description: "Google API Key 與預設模型設定" }
+      { label: "AI 模型設定", to: "/admin/settings/ai", end: true, enabled: true, description: "Google API Key 與預設模型設定" },
+      { label: "閱讀器功能開關", to: "/admin/settings/reader-features", end: true, enabled: true, description: "筆記功能與 PDF 工具顯示控制" }
     ]
   },
   {

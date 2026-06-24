@@ -3428,6 +3428,89 @@ app.post("/api/admin/books/:bookId/qa/auth-check", (req, res) => {
   return res.json({ ok: true });
 });
 
+// ─── Reader Feature Toggles ───────────────────────────────────────────────────
+// Stored as JSON in app_settings under key "reader_feature_settings".
+// Default: all tools enabled (non-breaking for existing students).
+
+const READER_FEATURE_SETTINGS_KEY = "reader_feature_settings";
+
+type NoteFeatureSettings = {
+  smartNotesEnabled: boolean;
+  pasteBackNotesEnabled: boolean;
+  pasteBackAiNotesEnabled: boolean;
+  screenshotAskAiEnabled: boolean;
+};
+
+type PdfToolSettings = {
+  highlightEnabled: boolean;
+  penEnabled: boolean;
+  lineEnabled: boolean;
+  rectangleEnabled: boolean;
+  circleEnabled: boolean;
+  stickyNoteEnabled: boolean;
+  eraserEnabled: boolean;
+};
+
+type ReaderFeatureSettings = {
+  noteFeatures: NoteFeatureSettings;
+  pdfTools: PdfToolSettings;
+};
+
+const DEFAULT_READER_FEATURE_SETTINGS: ReaderFeatureSettings = {
+  noteFeatures: {
+    smartNotesEnabled: true,
+    pasteBackNotesEnabled: true,
+    pasteBackAiNotesEnabled: true,
+    screenshotAskAiEnabled: true
+  },
+  pdfTools: {
+    highlightEnabled: true,
+    penEnabled: true,
+    lineEnabled: true,
+    rectangleEnabled: true,
+    circleEnabled: true,
+    stickyNoteEnabled: true,
+    eraserEnabled: true
+  }
+};
+
+function readReaderFeatureSettings(): ReaderFeatureSettings {
+  const raw = repos.settings.get(READER_FEATURE_SETTINGS_KEY);
+  if (!raw) return DEFAULT_READER_FEATURE_SETTINGS;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ReaderFeatureSettings>;
+    return {
+      noteFeatures: { ...DEFAULT_READER_FEATURE_SETTINGS.noteFeatures, ...(parsed.noteFeatures ?? {}) },
+      pdfTools: { ...DEFAULT_READER_FEATURE_SETTINGS.pdfTools, ...(parsed.pdfTools ?? {}) }
+    };
+  } catch {
+    return DEFAULT_READER_FEATURE_SETTINGS;
+  }
+}
+
+// Admin: GET reader feature settings
+app.get("/api/admin/settings/reader-features", (_req, res) => {
+  res.json(readReaderFeatureSettings());
+});
+
+// Admin: PUT reader feature settings (auth required when ADMIN_SECRET is set)
+app.put("/api/admin/settings/reader-features", (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  const body = req.body as Partial<ReaderFeatureSettings>;
+  const current = readReaderFeatureSettings();
+  const updated: ReaderFeatureSettings = {
+    noteFeatures: { ...current.noteFeatures, ...(body.noteFeatures ?? {}) },
+    pdfTools: { ...current.pdfTools, ...(body.pdfTools ?? {}) }
+  };
+  repos.settings.set(READER_FEATURE_SETTINGS_KEY, JSON.stringify(updated));
+  res.json(updated);
+});
+
+// Student: GET reader feature settings (read-only, no auth)
+app.get("/api/student/settings/reader-features", (_req, res) => {
+  res.json(readReaderFeatureSettings());
+});
+
 const port = Number(process.env.ADMIN_API_PORT || 4300);
 app.listen(port, () => {
   console.log(
