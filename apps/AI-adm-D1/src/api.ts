@@ -490,6 +490,52 @@ export function testAiConnection(): Promise<{ ok: boolean; message: string }> {
   return http<{ ok: boolean; message: string }>("/api/admin/settings/ai-provider/test", { method: "POST" });
 }
 
+// ---- Smart Videos ----
+
+export interface SmartVideo {
+  id: string;
+  bookId: string;
+  chapterId: string | null;
+  title: string;
+  youtubeUrl: string;
+  videoUrl: string;
+  enabled: boolean;
+  orderIndex: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function listSmartVideos(bookId: string): Promise<{ videos: SmartVideo[] }> {
+  return http<{ videos: SmartVideo[] }>(`/api/admin/books/${bookId}/smart-videos`);
+}
+
+export function listStudentSmartVideos(bookId: string): Promise<{ videos: SmartVideo[] }> {
+  return http<{ videos: SmartVideo[] }>(`/api/student/books/${bookId}/smart-videos`);
+}
+
+// ---- Knowledge Points ----
+
+export interface KnowledgePointSettings {
+  sidebarEnabled: boolean;
+  searchEnabled: boolean;
+  defaultExpanded: boolean;
+}
+
+export function getKnowledgePointSettings(bookId: string): Promise<KnowledgePointSettings> {
+  return http<KnowledgePointSettings>(`/api/admin/books/${bookId}/knowledge-points/settings`);
+}
+
+export function saveKnowledgePointSettings(bookId: string, s: KnowledgePointSettings): Promise<KnowledgePointSettings> {
+  return http<KnowledgePointSettings>(`/api/admin/books/${bookId}/knowledge-points/settings`, {
+    method: "PUT",
+    body: JSON.stringify(s)
+  });
+}
+
+export function syncKnowledgePoints(bookId: string): Promise<{ synced: number; message: string }> {
+  return http<{ synced: number; message: string }>(`/api/admin/books/${bookId}/knowledge-points/sync`, { method: "POST" });
+}
+
 export function startOneClickWorkflow(bookId: string, selectedModel: string) {
   return http<{ job: BookAiJob; workflow: OneClickWorkflowState }>(
     `/api/admin/books/${bookId}/one-click-workflow`,

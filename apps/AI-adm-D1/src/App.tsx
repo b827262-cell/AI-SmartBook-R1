@@ -14,6 +14,7 @@ import { SmartSolveImportPage } from "./pages/SmartSolveImportPage";
 import { NotesHelpPage } from "./pages/NotesHelpPage";
 import { AdminNotesPage } from "./pages/AdminNotesPage";
 import { AiSettingsPage } from "./pages/AiSettingsPage";
+import { VideoSettingsPage } from "./pages/VideoSettingsPage";
 
 export function App() {
   return (
@@ -36,6 +37,7 @@ export function App() {
             <Route path="/admin/books/:bookId/qa" element={<QaPage />} />
             <Route path="/admin/books/:bookId/*" element={<BookDetail />} />
             <Route path="/admin/settings/ai" element={<AiSettingsPage />} />
+            <Route path="/admin/books/:bookId/smart-videos" element={<VideoSettingsPage />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </AdminShell>
