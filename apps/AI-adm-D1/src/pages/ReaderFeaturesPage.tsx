@@ -19,14 +19,32 @@ type PdfToolSettings = {
   eraserEnabled: boolean;
 };
 
+type ReaderExtraFeatureSettings = {
+  textSelectionEnabled: boolean;
+  answerMaskEnabled: boolean;
+};
+
+type WatermarkSettings = {
+  enabled: boolean;
+  opacity: number;
+  source: "last_pdf_page" | "manual";
+  extractedCode?: string;
+  extractedIsbn?: string;
+  text?: string;
+};
+
 type ReaderFeatureSettings = {
   noteFeatures: NoteFeatureSettings;
   pdfTools: PdfToolSettings;
+  extraFeatures: ReaderExtraFeatureSettings;
+  watermark: WatermarkSettings;
 };
 
 const DEFAULT: ReaderFeatureSettings = {
   noteFeatures: { smartNotesEnabled: true, pasteBackNotesEnabled: true, pasteBackAiNotesEnabled: true, screenshotAskAiEnabled: true },
-  pdfTools: { highlightEnabled: true, penEnabled: true, lineEnabled: true, rectangleEnabled: true, circleEnabled: true, stickyNoteEnabled: true, eraserEnabled: true }
+  pdfTools: { highlightEnabled: true, penEnabled: true, lineEnabled: true, rectangleEnabled: true, circleEnabled: true, stickyNoteEnabled: true, eraserEnabled: true },
+  extraFeatures: { textSelectionEnabled: true, answerMaskEnabled: true },
+  watermark: { enabled: true, opacity: 0.15, source: "last_pdf_page" }
 };
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -56,6 +74,11 @@ const PDF_LABELS: { key: keyof PdfToolSettings; label: string; desc: string }[] 
   { key: "circleEnabled", label: "圓形", desc: "繪製圓形工具" },
   { key: "stickyNoteEnabled", label: "便利貼", desc: "新增便利貼注記" },
   { key: "eraserEnabled", label: "橡皮擦", desc: "清除標記工具" }
+];
+
+const EXTRA_LABELS: { key: keyof ReaderExtraFeatureSettings; label: string; desc: string }[] = [
+  { key: "textSelectionEnabled", label: "文字選取", desc: "允許學生在閱讀器選取文字" },
+  { key: "answerMaskEnabled", label: "遮答案", desc: "提供遮罩答案的工具" }
 ];
 
 export function ReaderFeaturesPage() {
@@ -98,6 +121,24 @@ export function ReaderFeaturesPage() {
 
   function togglePdf(key: keyof PdfToolSettings) {
     const updated = { ...settings, pdfTools: { ...settings.pdfTools, [key]: !settings.pdfTools[key] } };
+    setSettings(updated);
+    void save(updated);
+  }
+
+  function toggleExtra(key: keyof ReaderExtraFeatureSettings) {
+    const updated = { ...settings, extraFeatures: { ...settings.extraFeatures, [key]: !settings.extraFeatures[key] } };
+    setSettings(updated);
+    void save(updated);
+  }
+
+  function toggleWatermark() {
+    const updated = { ...settings, watermark: { ...settings.watermark, enabled: !settings.watermark.enabled } };
+    setSettings(updated);
+    void save(updated);
+  }
+
+  function setWatermarkOpacity(opacity: number) {
+    const updated = { ...settings, watermark: { ...settings.watermark, opacity } };
     setSettings(updated);
     void save(updated);
   }
@@ -163,6 +204,76 @@ export function ReaderFeaturesPage() {
               <ToggleBtn on={settings.pdfTools[key]} onClick={() => togglePdf(key)} />
             </div>
           ))}
+        </AdminCard>
+      </div>
+
+      <div style={{ marginTop: "1rem" }}>
+        <AdminCard title="閱讀器其他功能設定">
+          <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>控制學生端閱讀器其他常用功能開關。</p>
+          {EXTRA_LABELS.map(({ key, label, desc }) => (
+            <div key={key} style={toggleRowStyle}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
+              </div>
+              <ToggleBtn on={settings.extraFeatures[key]} onClick={() => toggleExtra(key)} />
+            </div>
+          ))}
+        </AdminCard>
+      </div>
+
+      <div style={{ marginTop: "1rem" }}>
+        <AdminCard title="浮水印設定">
+          <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>控制 PDF 閱讀器的浮水印開關與顯示透明度。</p>
+          
+          <div style={toggleRowStyle}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>浮水印</div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>在閱讀器底層顯示學生專屬或識別浮水印</div>
+            </div>
+            <ToggleBtn on={settings.watermark.enabled} onClick={toggleWatermark} />
+          </div>
+
+          <div style={{ padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>透明度 ({(settings.watermark.opacity * 100).toFixed(0)}%)</div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>設定浮水印的透明程度，數字越小越透明</div>
+              </div>
+            </div>
+            <input 
+              type="range" 
+              min="1" 
+              max="100" 
+              value={settings.watermark.opacity * 100} 
+              onChange={e => setWatermarkOpacity(Number(e.target.value) / 100)} 
+              disabled={saving || !settings.watermark.enabled}
+              style={{ width: "100%", cursor: settings.watermark.enabled ? "pointer" : "not-allowed" }}
+            />
+          </div>
+
+          <div style={{ padding: "10px 0" }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>浮水印內容預覽</div>
+            <div style={{ 
+              background: "#f9fafb", 
+              padding: 12, 
+              borderRadius: 6, 
+              border: "1px dashed #d1d5db",
+              color: `rgba(0,0,0,${settings.watermark.opacity})`,
+              fontSize: 16,
+              fontWeight: "bold",
+              textAlign: "center",
+              minHeight: 40,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}>
+              51MG122110 / ISBN 978-626-411-527-8
+            </div>
+            <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
+              * 實際浮水印內容將從該書籍 PDF 最後一頁動態擷取代碼與 ISBN，若擷取失敗將不顯示。
+            </p>
+          </div>
         </AdminCard>
       </div>
     </div>

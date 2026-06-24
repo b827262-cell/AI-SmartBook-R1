@@ -158,5 +158,20 @@ export const studentClient = {
         stickyNoteEnabled: boolean;
         eraserEnabled: boolean;
       };
-    }>("/api/student/settings/reader-features")
+      extraFeatures: {
+        textSelectionEnabled: boolean;
+        answerMaskEnabled: boolean;
+      };
+      watermark: {
+        enabled: boolean;
+        opacity: number;
+        source: "last_pdf_page" | "manual";
+        extractedCode?: string;
+        extractedIsbn?: string;
+        text?: string;
+      };
+    }>("/api/student/settings/reader-features"),
+
+  getWatermark: (bookId: string) =>
+    http<{ watermarkText: string }>(`/api/student/books/${bookId}/watermark`)
 };

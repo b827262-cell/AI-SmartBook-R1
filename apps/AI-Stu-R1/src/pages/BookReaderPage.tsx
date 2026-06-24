@@ -309,6 +309,9 @@ export function BookReaderPage() {
   const [showPasteBack, setShowPasteBack] = useState(false);
   const [showScreenshotAsk, setShowScreenshotAsk] = useState(false);
   const [maskMode, setMaskMode] = useState(false);
+  const [penMode, setPenMode] = useState(false);
+  const [penWidth, setPenWidth] = useState(4);
+  const [penColor, setPenColor] = useState("#1f2937");
   const [masks, setMasks] = useState<Record<number, MaskRect[]>>({});
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1024 : window.innerWidth
@@ -1115,7 +1118,10 @@ export function BookReaderPage() {
               }}
               selectionMode={selectionMode}
               onToggleSelection={() => {
-                setSelectionMode((v) => !v);
+                setSelectionMode((v) => {
+                  if (!v) setPenMode(false);
+                  return !v;
+                });
                 setSelectedText("");
               }}
               aiOpen={isMobile ? isMobileChatOpen : rightPanel === "ai"}
@@ -1149,6 +1155,18 @@ export function BookReaderPage() {
               onScreenshotAsk={() => setShowScreenshotAsk(true)}
               maskMode={maskMode}
               onToggleMask={() => setMaskMode((v) => !v)}
+              penMode={penMode}
+              penWidth={penWidth}
+              penColor={penColor}
+              onTogglePen={() => {
+                setPenMode((current) => {
+                  const next = !current;
+                  if (next) setSelectionMode(false);
+                  return next;
+                });
+              }}
+              onSelectPenWidth={setPenWidth}
+              onSelectPenColor={setPenColor}
             />
 
             {selectionMode && (
@@ -1233,7 +1251,11 @@ export function BookReaderPage() {
                       page={pdfPage}
                       zoom={zoom}
                       watermarkText={watermarkText}
-                      selectable={selectionMode}
+                      selectable={selectionMode && !penMode}
+                      penEnabled={readerFeatures.pdfTools.penEnabled}
+                      penMode={penMode}
+                      penWidth={penWidth}
+                      penColor={penColor}
                       onPageCount={setPageCount}
                       onError={setPdfError}
                       onSelectedText={setSelectedText}

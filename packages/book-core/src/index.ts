@@ -1,6 +1,11 @@
 export * from "./context";
 export * from "./content-splitter";
-export * from "./pdf-parser";
+export {
+  parsePdfToContents,
+  extractLastPdfPageText,
+  type ParsePdfResult,
+  type ExtractWatermarkResult
+} from "./pdf-parser";
 export * from "./book-splitter";
 export * from "./chapter-builder";
 export * from "./pdf-index-builder";
