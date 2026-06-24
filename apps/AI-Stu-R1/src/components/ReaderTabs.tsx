@@ -19,14 +19,27 @@ export const READER_TABS: ReaderTab[] = [
 /** Second-level feature tabs with a blue active underline. */
 export function ReaderTabs({
   active,
-  onChange
+  onChange,
+  features
 }: {
   active: ReaderTabKey;
   onChange: (key: ReaderTabKey) => void;
+  features?: {
+    noteFeatures?: {
+      smartNotesEnabled?: boolean;
+    };
+  };
 }) {
+  const visibleTabs = READER_TABS.filter(tab => {
+    if (tab.key === "smart-note" && features?.noteFeatures?.smartNotesEnabled === false) {
+      return false;
+    }
+    return true;
+  });
+
   return (
     <nav className="reader-tabs" role="tablist">
-      {READER_TABS.map((tab) => (
+      {visibleTabs.map((tab) => (
         <button
           key={tab.key}
           role="tab"

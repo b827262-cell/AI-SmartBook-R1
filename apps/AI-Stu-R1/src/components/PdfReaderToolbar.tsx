@@ -128,7 +128,8 @@ export function PdfReaderToolbar({
   onPasteBackNote,
   onScreenshotAsk,
   maskMode,
-  onToggleMask
+  onToggleMask,
+  features
 }: {
   outlineNodes: ReaderOutlineNode[];
   activeNodeId: string | null;
@@ -158,6 +159,23 @@ export function PdfReaderToolbar({
   onScreenshotAsk: () => void;
   maskMode: boolean;
   onToggleMask: () => void;
+  features: {
+    noteFeatures: {
+      smartNotesEnabled: boolean;
+      pasteBackNotesEnabled: boolean;
+      pasteBackAiNotesEnabled: boolean;
+      screenshotAskAiEnabled: boolean;
+    };
+    pdfTools: {
+      highlightEnabled: boolean;
+      penEnabled: boolean;
+      lineEnabled: boolean;
+      rectangleEnabled: boolean;
+      circleEnabled: boolean;
+      stickyNoteEnabled: boolean;
+      eraserEnabled: boolean;
+    };
+  };
 }) {
   const hasPdf = page != null;
   const atFirst = page == null || page <= 1;
@@ -276,47 +294,91 @@ export function PdfReaderToolbar({
         {selectionMode ? "結束選取" : "文字選取"}
       </button>
 
-      <button
-        type="button"
-        className={`tool-btn ${notesOpen ? "active" : ""}`}
-        onClick={onToggleNotes}
-        title="智能筆記"
-      >
-        <ReaderToolbarIcon mode="smartNote" fallback="🧠" />
-        {notesOpen ? "收合筆記" : "智能筆記"}
-      </button>
+      {features.noteFeatures.smartNotesEnabled && (
+        <button
+          type="button"
+          className={`tool-btn ${notesOpen ? "active" : ""}`}
+          onClick={onToggleNotes}
+          title="智能筆記"
+        >
+          <ReaderToolbarIcon mode="smartNote" fallback="🧠" />
+          {notesOpen ? "收合筆記" : "智能筆記"}
+        </button>
+      )}
 
       <span className="tool-divider" aria-hidden="true" />
 
-      <button
-        type="button"
-        className="tool-btn reader-action-btn"
-        onClick={onStickyNote}
-        title="貼圖筆記：開啟筆記畫板，記錄此頁筆記"
-      >
-        <ReaderToolbarIcon mode="pasteBackNote" fallback="📌" />
-        貼圖筆記
-      </button>
+      {features.pdfTools.stickyNoteEnabled && (
+        <button
+          type="button"
+          className="tool-btn reader-action-btn"
+          onClick={onStickyNote}
+          title="貼圖筆記：開啟筆記畫板，記錄此頁筆記"
+        >
+          <ReaderToolbarIcon mode="pasteBackNote" fallback="📌" />
+          貼圖筆記
+        </button>
+      )}
 
-      <button
-        type="button"
-        className="tool-btn reader-action-btn"
-        onClick={onPasteBackNote}
-        title="貼回AI筆記：開啟外部 AI 平台後，將 AI 回答貼回此筆記欄"
-      >
-        <ReaderToolbarIcon mode="pasteBackAiNote" fallback="🤖" />
-        貼回AI筆記
-      </button>
+      {features.noteFeatures.pasteBackAiNotesEnabled && (
+        <button
+          type="button"
+          className="tool-btn reader-action-btn"
+          onClick={onPasteBackNote}
+          title="貼回AI筆記：開啟外部 AI 平台後，將 AI 回答貼回此筆記欄"
+        >
+          <ReaderToolbarIcon mode="pasteBackAiNote" fallback="🤖" />
+          貼回AI筆記
+        </button>
+      )}
 
-      <button
-        type="button"
-        className="tool-btn reader-action-btn"
-        onClick={onScreenshotAsk}
-        title="截圖問AI：選取 PDF 區域截圖後，手動複製提示詞問 AI"
-      >
-        <ReaderToolbarIcon mode="screenshot" fallback="📸" />
-        截圖問AI
-      </button>
+      {features.noteFeatures.screenshotAskAiEnabled && (
+        <button
+          type="button"
+          className="tool-btn reader-action-btn"
+          onClick={onScreenshotAsk}
+          title="截圖問AI：選取 PDF 區域截圖後，手動複製提示詞問 AI"
+        >
+          <ReaderToolbarIcon mode="screenshot" fallback="📸" />
+          截圖問AI
+        </button>
+      )}
+
+      {features.pdfTools.highlightEnabled && (
+        <button type="button" className="tool-btn reader-action-btn" title="螢光筆" onClick={() => {}}>
+          <span style={{ marginRight: 6 }}>🖍️</span>螢光筆
+        </button>
+      )}
+
+      {features.pdfTools.penEnabled && (
+        <button type="button" className="tool-btn reader-action-btn" title="筆" onClick={() => {}}>
+          <span style={{ marginRight: 6 }}>🖊️</span>筆
+        </button>
+      )}
+
+      {features.pdfTools.lineEnabled && (
+        <button type="button" className="tool-btn reader-action-btn" title="直線" onClick={() => {}}>
+          <span style={{ marginRight: 6 }}>📏</span>直線
+        </button>
+      )}
+
+      {features.pdfTools.rectangleEnabled && (
+        <button type="button" className="tool-btn reader-action-btn" title="矩形" onClick={() => {}}>
+          <span style={{ marginRight: 6 }}>🔲</span>矩形
+        </button>
+      )}
+
+      {features.pdfTools.circleEnabled && (
+        <button type="button" className="tool-btn reader-action-btn" title="圓形" onClick={() => {}}>
+          <span style={{ marginRight: 6 }}>⭕</span>圓形
+        </button>
+      )}
+
+      {features.pdfTools.eraserEnabled && (
+        <button type="button" className="tool-btn reader-action-btn" title="橡皮擦" onClick={() => {}}>
+          <span style={{ marginRight: 6 }}>🧽</span>橡皮擦
+        </button>
+      )}
 
       <button
         type="button"

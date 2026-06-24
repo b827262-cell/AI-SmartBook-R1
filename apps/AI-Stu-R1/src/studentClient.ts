@@ -139,5 +139,24 @@ export const studentClient = {
       sourceMessageId: string | null;
       anchor: boolean;
       fallback: string | null;
-    }>(`/api/student/books/${bookId}/notes/${noteId}/navigate`)
+    }>(`/api/student/books/${bookId}/notes/${noteId}/navigate`),
+
+  getReaderFeatures: () =>
+    http<{
+      noteFeatures: {
+        smartNotesEnabled: boolean;
+        pasteBackNotesEnabled: boolean;
+        pasteBackAiNotesEnabled: boolean;
+        screenshotAskAiEnabled: boolean;
+      };
+      pdfTools: {
+        highlightEnabled: boolean;
+        penEnabled: boolean;
+        lineEnabled: boolean;
+        rectangleEnabled: boolean;
+        circleEnabled: boolean;
+        stickyNoteEnabled: boolean;
+        eraserEnabled: boolean;
+      };
+    }>("/api/student/settings/reader-features")
 };
