@@ -21,3 +21,5 @@ data/*.sqlite
 uploads
 exports/*.json
 tmp_*.ts
+apps/AI-adm-D1/data/
+.claude/

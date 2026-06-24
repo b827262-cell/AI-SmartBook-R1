@@ -11,6 +11,8 @@ import type {
 } from "@ai-smartbook/schema";
 import {
   adminApi,
+  getAiProviderSettings,
+  type AiProviderStatus,
   type GenerateReaderTocResponse,
   type ReaderTocImportPayload,
   type ReaderTocResponse
@@ -249,6 +251,8 @@ export function FilesTab({ bookId }: { bookId: string }) {
   const [tocPageStart, setTocPageStart] = useState("3");
   const [tocPageEnd, setTocPageEnd] = useState("6");
   const [genTocResult, setGenTocResult] = useState<GenerateReaderTocResponse | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiProviderStatus | null>(null);
+  const [oneClickMsg, setOneClickMsg] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const jsonUploadRef = useRef<HTMLInputElement>(null);
   const previewSectionRef = useRef<HTMLDivElement>(null);
@@ -268,6 +272,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
 
   useEffect(() => {
     void reload().catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    void getAiProviderSettings().then(setAiStatus).catch(() => null);
   }, [bookId]);
 
   const previewFile = previewFileId ? files.find((file) => file.id === previewFileId) ?? null : null;
@@ -306,13 +311,13 @@ export function FilesTab({ bookId }: { bookId: string }) {
     const file = inputRef.current?.files?.[0];
     if (!file) return;
     if (!(file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) {
-      setError("Upload PDF accepts PDF files only.");
+      setError("上傳 PDF 僅接受 PDF 格式。");
       setMsg("");
       return;
     }
     await run(async () => {
       await adminApi.uploadFile(bookId, file, { role: "source_document" });
-      setMsg(`Uploaded PDF: ${file.name}`);
+      setMsg(`已上傳 PDF：${file.name}`);
       if (inputRef.current) inputRef.current.value = "";
       await reload();
     });
@@ -466,7 +471,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
     if (!file) return;
     await run(async () => {
       const result = await adminApi.uploadJsonIndex(bookId, file);
-      setMsg(`Uploaded JSON index: ${result.index.fileName}`);
+      setMsg(`已上傳 JSON 索引：${result.index.fileName}`);
       if (jsonUploadRef.current) jsonUploadRef.current.value = "";
       await reload();
     });
@@ -583,14 +588,74 @@ export function FilesTab({ bookId }: { bookId: string }) {
     }
   }
 
+  const hasAiKey = aiStatus?.hasGoogleApiKey ?? false;
+
+  function handleOneClick() {
+    if (!hasAiKey) {
+      setOneClickMsg("已完成非 AI 流程；AI 建立 Q&A 與 AI 萃取知識點因未提供 Google API Key 而略過。");
+    } else {
+      setOneClickMsg(`一鍵完成執行中（預設模型：${aiStatus?.defaultModel ?? "—"}）— 拆書 → 建立章節（首面 1 ～ 末面 589）→ AI 建立 Q&A → AI 萃取知識點`);
+    }
+  }
+
   return (
     <div>
+      {/* AI Status + One-click Workflow */}
+      <div className="card" style={{ marginBottom: 0 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>AI 執行狀態</h3>
+            <div
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                background: hasAiKey ? "#f0fdf4" : "#fef2f2",
+                border: `1px solid ${hasAiKey ? "#bbf7d0" : "#fecaca"}`,
+                fontSize: 13,
+                marginBottom: 8
+              }}
+            >
+              <div style={{ fontWeight: 600 }}>
+                {hasAiKey ? "AI 狀態：🟢 Google API Key 已提供" : "AI 狀態：🔴 未提供 Google API Key"}
+              </div>
+              {hasAiKey && aiStatus?.defaultModel && (
+                <div style={{ color: "#6b7280", marginTop: 2 }}>預設模型：{aiStatus.defaultModel}</div>
+              )}
+              {!hasAiKey && (
+                <div style={{ color: "#6b7280", marginTop: 4, fontSize: 12 }}>
+                  可執行：拆書、建立章節、建立基礎知識點<br />
+                  略過：AI 建立 Q&amp;A、AI 萃取知識點、截圖問 AI
+                </div>
+              )}
+              {hasAiKey && (
+                <div style={{ color: "#6b7280", marginTop: 4, fontSize: 12 }}>
+                  可執行：拆書、建立章節、AI 建立 Q&amp;A、AI 建立知識點
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>一鍵完成</h3>
+            <p className="muted" style={{ margin: "0 0 10px 0", fontSize: 13 }}>
+              拆書（預設頂級）→ 建立章節（首面 1 ～ 末面 589）→ 建立 Q&amp;A → 建立知識點
+              {!hasAiKey && "（AI 步驟略過）"}
+            </p>
+            <button className="btn" onClick={handleOneClick} disabled={busy}>
+              一鍵完成
+            </button>
+            {oneClickMsg && (
+              <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>{oneClickMsg}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Upload PDF</h3>
+        <h3 style={{ marginTop: 0 }}>上傳 PDF</h3>
         <div className="row">
           <input ref={inputRef} type="file" accept="application/pdf" style={{ maxWidth: 360 }} />
           <button className="btn" onClick={() => void onUploadPdf()} disabled={busy}>
-            Upload
+            上傳
           </button>
         </div>
         {msg && <p className="muted">{msg}</p>}
@@ -600,9 +665,9 @@ export function FilesTab({ bookId }: { bookId: string }) {
       <div className="card" ref={readerTocSectionRef}>
         <div className="row between" style={{ alignItems: "flex-start" }}>
           <div>
-            <h3 style={{ marginTop: 0, marginBottom: 6 }}>Manual Reader TOC</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 6 }}>手動匯入閱讀器目錄</h3>
             <p className="muted" style={{ margin: 0 }}>
-              Import structured chapter/section hierarchy used by the student reader.
+              匯入學生閱讀器使用的章節／段落階層結構。
             </p>
           </div>
           <div className="row" style={{ gap: 8 }}>
@@ -615,26 +680,26 @@ export function FilesTab({ bookId }: { bookId: string }) {
               <option value="json">JSON</option>
             </select>
             <button className="btn secondary" onClick={() => onPreviewReaderToc()} disabled={busy}>
-              Preview
+              預覽
             </button>
             <button className="btn" onClick={() => void onImportReaderToc()} disabled={busy || !readerTocContent.trim()}>
-              Import / Replace
+              匯入 / 取代
             </button>
             <button className="btn secondary" onClick={() => void onDeleteReaderToc()} disabled={busy || !readerToc?.file}>
-              Delete TOC
+              刪除目錄
             </button>
           </div>
         </div>
 
         <div className="row" style={{ marginTop: 10, gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <span className="muted" style={{ margin: 0 }}>
-            Active TOC:
+            目前目錄：
           </span>
           <strong style={{ color: readerToc?.file ? undefined : "#64748b" }}>
-            {readerToc?.file?.fileName ?? "none"}
+            {readerToc?.file?.fileName ?? "無"}
           </strong>
-          {readerToc?.file ? <span className="muted">Items: {readerToc.file.itemCount}</span> : null}
-          {readerToc?.file ? <span className="muted">Updated: {readerToc.file.createdAt}</span> : null}
+          {readerToc?.file ? <span className="muted">項目數：{readerToc.file.itemCount}</span> : null}
+          {readerToc?.file ? <span className="muted">更新時間：{readerToc.file.createdAt}</span> : null}
         </div>
 
         <textarea
@@ -646,8 +711,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
 
         {looksLikeSentenceIndex ? (
           <p className="error" style={{ marginTop: 8 }}>
-            This is a sentence JSON Index, not a Reader TOC. Use “Generate Reader TOC from JSON
-            Index” instead.
+            這是句子 JSON 索引，不是閱讀器目錄。請改用「從 JSON 索引產生閱讀器目錄」功能。
           </p>
         ) : null}
 
@@ -656,7 +720,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
         {readerTocContent.trim() || readerTocPreview.length > 0 ? (
           <div className="admin-json-panel" style={{ marginTop: 12 }}>
             <details open>
-              <summary>Preview parsed tree</summary>
+              <summary>預覽解析樹</summary>
               <pre className="files-json-preview" style={{ marginTop: 8 }}>
                 {readerTocPreviewText || "(empty)"}
               </pre>
@@ -666,20 +730,20 @@ export function FilesTab({ bookId }: { bookId: string }) {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Files</h3>
+        <h3 style={{ marginTop: 0 }}>檔案清單</h3>
         {documentFiles.length === 0 ? (
-          <p className="muted">No files uploaded yet.</p>
+          <p className="muted">尚無上傳的檔案。</p>
         ) : (
           <div className="admin-table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Related PDF</th>
-                  <th>Size</th>
-                  <th>Parse status</th>
-                  <th>Actions</th>
+                  <th>檔名</th>
+                  <th>類型</th>
+                  <th>關聯 PDF</th>
+                  <th>大小</th>
+                  <th>解析狀態</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -692,8 +756,8 @@ export function FilesTab({ bookId }: { bookId: string }) {
                   const isPdfRow = rowKind === "pdf_source";
                   const isReferenceImageRow = rowKind === "reference_image";
                   const isMisclassifiedImageRow = rowKind === "misclassified_image";
-                  const contentActionLabel = file.parseStatus === "parsed" ? "Re-parse Content" : "Parse Content";
-                  const outlineActionLabel = file.parseStatus === "parsed" ? "Re-parse Outline" : "Parse Outline";
+                  const contentActionLabel = file.parseStatus === "parsed" ? "重新解析內容" : "解析內容";
+                  const outlineActionLabel = file.parseStatus === "parsed" ? "重新解析目錄結構" : "解析目錄結構";
                   const selectedJsonLevel = jsonLevels[file.id] ?? "page";
                   const hasGeneratedJson = generatedIndex?.fileId === file.id;
 
@@ -703,28 +767,28 @@ export function FilesTab({ bookId }: { bookId: string }) {
                         <div>{file.fileName}</div>
                         {isMisclassifiedImageRow ? (
                           <div className="error" style={{ marginTop: 6 }}>
-                            Image file is not a valid PDF parsing source on this page.
+                            此圖片檔不是有效的 PDF 解析來源。
                           </div>
                         ) : null}
                         {isReferenceImageRow ? (
                           <div className="muted" style={{ marginTop: 6 }}>
-                            Legacy reference image row. Upload is removed from this page.
+                            舊版參考圖片。上傳功能已從本頁移除。
                           </div>
                         ) : null}
                         {rowKind === "unsupported_source" ? (
                           <div className="error" style={{ marginTop: 6 }}>
-                            Unsupported source file type. Only PDF source files are parseable here.
+                            不支援的來源檔案格式。本頁僅能解析 PDF 來源檔案。
                           </div>
                         ) : null}
                       </td>
                       <td>
                         {isPdfRow
-                          ? "PDF source"
+                          ? "PDF 來源"
                           : isReferenceImageRow
-                            ? "Reference image"
+                            ? "參考圖片"
                             : isMisclassifiedImageRow
-                              ? "Misclassified image"
-                              : "Unsupported source"}
+                              ? "錯誤分類圖片"
+                              : "不支援的來源"}
                       </td>
                       <td>{relatedPdf?.fileName ?? "—"}</td>
                       <td>{(file.fileSize / 1024).toFixed(1)} KB</td>
@@ -758,7 +822,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                                 onClick={() => void onGenerateJsonIndex(file.id)}
                                 disabled={busy}
                               >
-                                Generate JSON Index
+                                產生 JSON 索引
                               </button>
                               <select
                                 value={selectedJsonLevel}
@@ -782,14 +846,14 @@ export function FilesTab({ bookId }: { bookId: string }) {
                                 onClick={() => onViewJsonResult(file.id)}
                                 disabled={busy || !hasGeneratedJson}
                               >
-                                View JSON
+                                查看 JSON
                               </button>
                               <button
                                 className="btn secondary"
                                 onClick={() => onDownloadJsonResult(file.id)}
                                 disabled={busy || !hasGeneratedJson}
                               >
-                                Download JSON
+                                下載 JSON
                               </button>
                             </>
                           ) : null}
@@ -799,7 +863,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                               onClick={() => onViewImageFile(file.id)}
                               disabled={busy}
                             >
-                              View
+                              查看
                             </button>
                           ) : null}
                           {isMisclassifiedImageRow ? (
@@ -808,7 +872,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                               onClick={() => onViewImageFile(file.id)}
                               disabled={busy}
                             >
-                              View
+                              查看
                             </button>
                           ) : null}
                           <button
@@ -816,7 +880,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                             onClick={() => void onDelete(file.id, file.fileName)}
                             disabled={busy}
                           >
-                            Delete
+                            刪除
                           </button>
                         </div>
                       </td>
@@ -833,25 +897,24 @@ export function FilesTab({ bookId }: { bookId: string }) {
         <div className="card" ref={previewSectionRef}>
           <div className="row between" style={{ alignItems: "flex-start" }}>
             <div>
-              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Preview Chapters</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>預覽章節</h3>
               <p className="muted" style={{ margin: 0 }}>
-                File: <strong>{previewFile?.fileName ?? previewFileId}</strong> · Physical PDF pages:{" "}
-                <strong>{previewPageCount}</strong> · Preview rows: <strong>{previewRows.length}</strong>
+                檔案：<strong>{previewFile?.fileName ?? previewFileId}</strong> · PDF 實際頁數：{" "}
+                <strong>{previewPageCount}</strong> · 預覽列數：<strong>{previewRows.length}</strong>
               </p>
             </div>
             <div className="row" style={{ gap: 8 }}>
               <button className="btn secondary" onClick={onAddRow} disabled={busy}>
-                Add Row
+                新增列
               </button>
               <button className="btn" onClick={() => void onApplyChapters()} disabled={busy}>
-                Apply Chapters
+                套用章節
               </button>
             </div>
           </div>
 
           <p className="muted" style={{ marginTop: 12 }}>
-            Physical PDF page numbers remain the canonical `pageStart` and `pageEnd`. Printed labels
-            are display metadata only.
+            PDF 實際頁碼為正式的 `pageStart` 與 `pageEnd`。印刷頁碼標籤僅為顯示用元資料。
           </p>
 
           <div className="files-preview-table">
@@ -859,17 +922,17 @@ export function FilesTab({ bookId }: { bookId: string }) {
               <table>
                 <thead>
                   <tr>
-                    <th>Enabled</th>
-                    <th>Original PDF Outline Title</th>
-                    <th>Suggested Chapter Title</th>
-                    <th>Printed Label / Range</th>
-                    <th>PDF Start</th>
-                    <th>PDF End</th>
-                    <th>Entry Type</th>
-                    <th>Sort</th>
-                    <th>Admin Note</th>
-                    <th>Apply Status</th>
-                    <th>Row</th>
+                    <th>啟用</th>
+                    <th>PDF 原始目錄標題</th>
+                    <th>建議章節標題</th>
+                    <th>印刷標籤 / 範圍</th>
+                    <th>PDF 起始頁</th>
+                    <th>PDF 終止頁</th>
+                    <th>條目類型</th>
+                    <th>排序</th>
+                    <th>後台備註</th>
+                    <th>套用狀態</th>
+                    <th>列</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -885,7 +948,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                       </td>
                       <td>
                         <div style={{ paddingLeft: `${Math.min(row.outlineLevel, 4) * 12}px` }}>
-                          {row.originalTitle || <span className="muted">Manual row</span>}
+                          {row.originalTitle || <span className="muted">手動列</span>}
                         </div>
                       </td>
                       <td>
@@ -894,7 +957,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                           onChange={(e) =>
                             updateRow(index, { ...row, suggestedTitle: e.target.value })
                           }
-                          placeholder="Chapter title"
+                          placeholder="章節標題"
                         />
                       </td>
                       <td>
@@ -903,7 +966,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                           onChange={(e) =>
                             updateRow(index, { ...row, printedPageLabel: e.target.value || null })
                           }
-                          placeholder="Printed page label"
+                          placeholder="印刷頁碼標籤"
                         />
                       </td>
                       <td>
@@ -958,7 +1021,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                           onChange={(e) =>
                             updateRow(index, { ...row, adminNote: e.target.value || null })
                           }
-                          placeholder="Optional note"
+                          placeholder="後台備註（選填）"
                         />
                       </td>
                       <td>
@@ -972,7 +1035,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                           onClick={() => onRemoveRow(index)}
                           disabled={busy}
                         >
-                          Remove
+                          移除
                         </button>
                       </td>
                     </tr>
@@ -988,7 +1051,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
         <div className="card" ref={jsonResultRef}>
           <div className="row between" style={{ alignItems: "flex-start" }}>
             <div>
-              <h3 style={{ marginTop: 0, marginBottom: 6 }}>JSON Index Result</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 6 }}>JSON 索引結果</h3>
               <p className="muted" style={{ margin: 0 }}>
                 File: <strong>{generatedIndex.fileName}</strong> · Level:{" "}
                 <strong>
@@ -1000,14 +1063,14 @@ export function FilesTab({ bookId }: { bookId: string }) {
             </div>
             <div className="row" style={{ gap: 8 }}>
               <button className="btn" onClick={() => void onSaveAsQaReference()} disabled={busy}>
-                Save as QA Reference
+                設為 QA 參考資料
               </button>
               <button
                 className="btn secondary"
                 onClick={() => onDownloadJsonResult(generatedIndex.fileId)}
                 disabled={busy}
               >
-                Download JSON
+                下載 JSON
               </button>
             </div>
           </div>
@@ -1023,7 +1086,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
           ) : null}
 
           <details style={{ marginTop: 14 }}>
-            <summary style={{ cursor: "pointer", fontWeight: 600 }}>View JSON</summary>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>查看 JSON</summary>
             <pre className="files-json-preview">{generatedJsonText}</pre>
           </details>
         </div>
@@ -1032,10 +1095,9 @@ export function FilesTab({ bookId }: { bookId: string }) {
       <div className="card">
         <div className="row between" style={{ alignItems: "flex-start" }}>
           <div>
-            <h3 style={{ marginTop: 0, marginBottom: 6 }}>JSON Index / QA Reference</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 6 }}>JSON 索引 / QA 參考資料</h3>
             <p className="muted" style={{ margin: 0 }}>
-              Stored JSON indexes persist across refreshes. The active one is used as the Knowledge QA
-              structured reference; with none active, QA falls back to content-based search.
+              已儲存的 JSON 索引在重新整理後仍會保留。啟用中的索引將作為知識問答的結構化參考；若無啟用索引，Q&A 將回退為內容全文搜尋。
             </p>
           </div>
           <div className="row" style={{ gap: 8 }}>
@@ -1046,7 +1108,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
               style={{ maxWidth: 280 }}
             />
             <button className="btn secondary" onClick={() => void onUploadJsonIndex()} disabled={busy}>
-              Upload JSON
+              上傳 JSON
             </button>
           </div>
         </div>
@@ -1055,7 +1117,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
           className="row"
           style={{ gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}
         >
-          <span className="muted">Reader TOC page start:</span>
+          <span className="muted">閱讀器目錄起始頁：</span>
           <input
             type="number"
             min={1}
@@ -1063,7 +1125,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
             onChange={(e) => setTocPageStart(e.target.value)}
             style={{ width: 88 }}
           />
-          <span className="muted">page end:</span>
+          <span className="muted">終止頁：</span>
           <input
             type="number"
             min={1}
@@ -1071,7 +1133,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
             onChange={(e) => setTocPageEnd(e.target.value)}
             style={{ width: 88 }}
           />
-          <span className="muted">— then click “Generate Reader TOC” on a JSON Index row below.</span>
+          <span className="muted">— 再點擊下方 JSON 索引列的「產生閱讀器目錄」按鈕。</span>
         </div>
 
         {genTocResult ? (
@@ -1086,20 +1148,19 @@ export function FilesTab({ bookId }: { bookId: string }) {
 
         {jsonIndexes.length === 0 ? (
           <p className="muted" style={{ marginTop: 12 }}>
-            No stored JSON index yet. Generate an index above and click “Save as QA Reference”, or
-            upload a JSON index file.
+            尚無已儲存的 JSON 索引。請先在上方產生索引並點擊「設為 QA 參考資料」，或上傳 JSON 索引檔案。
           </p>
         ) : (
           <div className="admin-table-wrap" style={{ marginTop: 12 }}>
             <table>
               <thead>
                 <tr>
-                  <th>File name</th>
-                  <th>Level / Label</th>
-                  <th>Items</th>
-                  <th>Created</th>
-                  <th>QA Reference</th>
-                  <th>Actions</th>
+                  <th>檔名</th>
+                  <th>層級 / 標籤</th>
+                  <th>項目數</th>
+                  <th>建立時間</th>
+                  <th>QA 參考狀態</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -1108,7 +1169,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                     <td>
                       <div>{idx.fileName}</div>
                       {!idx.valid ? (
-                        <span className="badge failed">invalid / unreadable</span>
+                        <span className="badge failed">無效 / 無法讀取</span>
                       ) : null}
                     </td>
                     <td>
@@ -1119,7 +1180,7 @@ export function FilesTab({ bookId }: { bookId: string }) {
                     <td className="muted">{new Date(idx.createdAt).toLocaleString("zh-Hant")}</td>
                     <td>
                       {idx.isActive ? (
-                        <span className="badge parsed">Active QA Reference</span>
+                        <span className="badge parsed">使用中 QA 參考</span>
                       ) : (
                         <span className="muted">—</span>
                       )}
@@ -1131,31 +1192,31 @@ export function FilesTab({ bookId }: { bookId: string }) {
                           onClick={() => void onSetActiveJsonIndex(idx.fileId)}
                           disabled={busy || idx.isActive || !idx.valid}
                         >
-                          Set as QA Reference
+                          設為 QA 參考資料
                         </button>
                         <button
                           className="btn"
                           onClick={() => void onGenerateReaderTocFromIndex(idx.fileId)}
                           disabled={busy || !idx.valid}
-                          title="Generate a chapter/section Reader TOC from this index using the page range above"
+                          title="根據上方頁碼範圍，從此索引產生章節閱讀器目錄"
                         >
-                          Generate Reader TOC
+                          產生閱讀器目錄
                         </button>
                         <button className="btn secondary" onClick={() => onViewJsonIndex(idx.fileId)}>
-                          View JSON
+                          查看 JSON
                         </button>
                         <button
                           className="btn secondary"
                           onClick={() => onDownloadJsonIndex(idx.fileId, idx.fileName)}
                         >
-                          Download JSON
+                          下載 JSON
                         </button>
                         <button
                           className="btn secondary"
                           onClick={() => void onDeleteJsonIndex(idx.fileId, idx.fileName)}
                           disabled={busy}
                         >
-                          Delete JSON
+                          刪除 JSON
                         </button>
                       </div>
                     </td>

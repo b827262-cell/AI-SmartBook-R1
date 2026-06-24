@@ -432,3 +432,38 @@ export interface AdminSmartBookNote extends SmartBookNote {
   bookTitle?: string;
   bookStatus?: Book["status"];
 }
+
+// ---- Google AI Provider Settings ----
+
+export type AiProviderStatus = {
+  provider: string;
+  hasGoogleApiKey: boolean;
+  maskedGoogleApiKey: string | null;
+  defaultModel: string;
+  defaultEmbeddingModel: string;
+  lastTestStatus: "not_tested" | "success" | "failed";
+  lastTestedAt: string | null;
+};
+
+export function getAiProviderSettings(): Promise<AiProviderStatus> {
+  return http<AiProviderStatus>("/api/admin/settings/ai-provider");
+}
+
+export function saveAiProviderSettings(opts: {
+  googleApiKey?: string;
+  defaultModel?: string;
+  defaultEmbeddingModel?: string;
+}): Promise<AiProviderStatus> {
+  return http<AiProviderStatus>("/api/admin/settings/ai-provider", {
+    method: "PUT",
+    body: JSON.stringify(opts),
+  });
+}
+
+export function clearGoogleApiKey(): Promise<{ hasGoogleApiKey: boolean }> {
+  return http<{ hasGoogleApiKey: boolean }>("/api/admin/settings/ai-provider/google-key", { method: "DELETE" });
+}
+
+export function testAiConnection(): Promise<{ ok: boolean; message: string }> {
+  return http<{ ok: boolean; message: string }>("/api/admin/settings/ai-provider/test", { method: "POST" });
+}

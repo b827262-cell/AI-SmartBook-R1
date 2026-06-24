@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { getAiSettings, saveAiSettings, clearGoogleApiKey, testAiConnection } from "./ai-settings-store.js";
 import express, { type Request, type Response } from "express";
 import multer from "multer";
 import { getDb, createRepositories, runMigrations, resolveDbPath } from "@ai-smartbook/db";
@@ -1762,6 +1763,42 @@ app.post("/api/admin/books/:bookId/chapters/:chapterId/ai/summarize", async (req
   }
 });
 
+// ---- AI Settings ----
+
+app.get("/api/admin/settings/ai-provider", async (_req, res) => {
+  try {
+    res.json(await getAiSettings());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.put("/api/admin/settings/ai-provider", async (req, res) => {
+  try {
+    const { googleApiKey, defaultModel, defaultEmbeddingModel } = req.body ?? {};
+    res.json(await saveAiSettings({ googleApiKey, defaultModel, defaultEmbeddingModel }));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.delete("/api/admin/settings/ai-provider/google-key", async (_req, res) => {
+  try {
+    res.json(await clearGoogleApiKey());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/admin/settings/ai-provider/test", async (_req, res) => {
+  try {
+    res.json(await testAiConnection());
+  } catch (err) {
+    res.status(500).json({ ok: false, message: String(err) });
+  }
+});
+
+// ---- Q&A (uses lazy AI client — reads fresh settings each call) ----
 app.post("/api/admin/books/:bookId/qa", async (req, res) => {
   const book = repos.books.findById(req.params.bookId);
   if (!book) return fail(res, 404, "book not found");
