@@ -624,6 +624,30 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--bor
   overflow: hidden;
   background: var(--soft);
 }
+.appearance-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.appearance-image-item.disabled {
+  background: #fafafa;
+  opacity: 0.65;
+}
+@media (max-width: 1100px) {
+  .appearance-icon-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .appearance-icon-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .appearance-icon-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* ===== Admin Notes Management ============================================= */
 .admin-notes-toolbar { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }

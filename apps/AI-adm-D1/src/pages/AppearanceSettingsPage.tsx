@@ -37,15 +37,12 @@ type ImportableIconField = {
 const IMPORTABLE_ICON_FIELDS: ImportableIconField[] = [
   {
     field: "headerLogoUrl",
-    label: "Logo 圖片（換圖）",
+    label: "後台 Logo",
     fixedFile: "1.png",
     section: "系統圖片",
     fallback: "iB",
     placeholder: "https://… 或上傳",
-    patch: (url) => ({
-      headerLogoUrl: url,
-      studentHeaderBrandLogoUrl: url
-    })
+    patch: (url) => ({ headerLogoUrl: url })
   },
   {
     field: "bannerIconUrl",
@@ -53,14 +50,6 @@ const IMPORTABLE_ICON_FIELDS: ImportableIconField[] = [
     fixedFile: "2.png",
     section: "系統圖片",
     fallback: "📘",
-    placeholder: "https://… 或上傳"
-  },
-  {
-    field: "categoryIconUrl",
-    label: "分類圖示（categoryIcon）",
-    fixedFile: "3.png",
-    section: "系統圖片",
-    fallback: "📚",
     placeholder: "https://… 或上傳"
   },
   {
@@ -72,16 +61,12 @@ const IMPORTABLE_ICON_FIELDS: ImportableIconField[] = [
     placeholder: "https://… 或上傳"
   },
   {
-    field: "studentHeaderHomeButtonIconUrl",
-    label: "按鈕 icon 網址",
-    fixedFile: "5.png",
+    field: "studentHeaderBrandLogoUrl",
+    label: "前台 Header 品牌圖示",
+    fixedFile: "6.png",
     section: "系統圖片",
-    fallback: "🏠",
-    placeholder: "https://…（icon 模式為 image 時使用）",
-    patch: (url) => ({
-      studentHeaderHomeButtonIconUrl: url,
-      studentHeaderHomeButtonIconMode: "image"
-    })
+    fallback: "🧠",
+    placeholder: "https://… 或上傳"
   },
   {
     field: "textSelectionIconUrl",
@@ -130,10 +115,69 @@ const IMPORTABLE_ICON_FIELDS: ImportableIconField[] = [
     section: "筆記功能圖示",
     fallback: "🙈",
     placeholder: "https://… 或上傳"
+  },
+  {
+    field: "categoryIconUrl",
+    label: "分類圖示",
+    fixedFile: "g.png",
+    section: "系統圖片",
+    fallback: "📚",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "studentHeaderHomeButtonIconUrl",
+    label: "按鈕 icon",
+    fixedFile: "h.png",
+    section: "系統圖片",
+    fallback: "🏠",
+    placeholder: "https://…（icon 模式為 image 時使用）",
+    patch: (url) => ({
+      studentHeaderHomeButtonIconUrl: url,
+      studentHeaderHomeButtonIconMode: "image"
+    })
   }
 ] ;
 
-type ImportableImageField = (typeof IMPORTABLE_ICON_FIELDS)[number]["field"];
+const IMPORTABLE_ICON_FIELDS_COMPAT: ImportableIconField[] = [
+  {
+    field: "studentHeaderHomeButtonIconUrl",
+    label: "按鈕 icon（相容 5.png）",
+    fixedFile: "5.png",
+    section: "系統圖片",
+    fallback: "🏠",
+    placeholder: "https://…（icon 模式為 image 時使用）",
+    patch: (url) => ({
+      studentHeaderHomeButtonIconUrl: url,
+      studentHeaderHomeButtonIconMode: "image"
+    })
+  }
+];
+
+type ImportSlot = {
+  type: "item" | "empty";
+  key: string;
+  fixedFile?: string;
+  label?: string;
+};
+
+const IMPORT_ICON_GRID: readonly ImportSlot[] = [
+  { type: "item", key: "a", fixedFile: "a.png" },
+  { type: "item", key: "b", fixedFile: "b.png" },
+  { type: "item", key: "c", fixedFile: "c.png" },
+  { type: "item", key: "d", fixedFile: "d.png" },
+  { type: "item", key: "e", fixedFile: "e.png" },
+  { type: "item", key: "f", fixedFile: "f.png" },
+  { type: "item", key: "g", fixedFile: "g.png" },
+  { type: "item", key: "h", fixedFile: "h.png" },
+  { type: "item", key: "6", fixedFile: "6.png" },
+  { type: "item", key: "1", fixedFile: "1.png" },
+  { type: "item", key: "2", fixedFile: "2.png" },
+  { type: "item", key: "4", fixedFile: "4.png" },
+  { type: "empty", key: "empty-1", label: "預留 1" },
+  { type: "empty", key: "empty-2", label: "預留 2" },
+  { type: "empty", key: "empty-3", label: "預留 3" },
+  { type: "empty", key: "empty-4", label: "預留 4" }
+];
 
 type ImportImageMap = Partial<AppearanceSettings>;
 
@@ -204,16 +248,15 @@ export function AppearanceSettingsPage() {
   const logoInput = useRef<HTMLInputElement>(null);
   const iconInput = useRef<HTMLInputElement>(null);
   const bgInput = useRef<HTMLInputElement>(null);
-  const brandInput = useRef<HTMLInputElement>(null);
   const singleImportInput = useRef<HTMLInputElement>(null);
   const folderImportInput = useRef<HTMLInputElement>(null);
 
-  const importableByFileName = new Map<string, (typeof IMPORTABLE_ICON_FIELDS)[number]>(
+  const importableByFileName = new Map<string, ImportableIconField>(
+    [...IMPORTABLE_ICON_FIELDS, ...IMPORTABLE_ICON_FIELDS_COMPAT].map((item) => [item.fixedFile.toLowerCase(), item])
+  );
+  const importableByGridFile = new Map<string, ImportableIconField>(
     IMPORTABLE_ICON_FIELDS.map((item) => [item.fixedFile.toLowerCase(), item])
   );
-
-  const systemIcons = IMPORTABLE_ICON_FIELDS.filter((item) => item.section === "系統圖片");
-  const noteIcons = IMPORTABLE_ICON_FIELDS.filter((item) => item.section === "筆記功能圖示");
 
   // Seed the form once settings are loaded from the server.
   useEffect(() => setForm(settings), [settings]);
@@ -490,39 +533,37 @@ export function AppearanceSettingsPage() {
           onChange={(e) => void onImportIconBatch(e)}
         />
 
-        <h4 style={{ margin: "0 0 8px" }}>系統圖片</h4>
-        {systemIcons.map((item) => (
-          <ImageFieldInput
-            key={item.field}
-            label={`${item.label}（${item.field}）`}
-            fixedFile={item.fixedFile}
-            value={form[item.field] as string}
-            fallback={item.fallback}
-            placeholder={item.placeholder}
-            onReplace={() => {
-              setActiveUploadField(item.field);
-              singleImportInput.current?.click();
-            }}
-            onUrlChange={(value) => setField(item.field, value)}
-          />
-        ))}
+        <div className="appearance-icon-grid">
+          {IMPORT_ICON_GRID.map((slot) => {
+            if (slot.type === "empty") {
+              return (
+                <div key={slot.key} className="appearance-image-item disabled" aria-disabled="true">
+                  <label>{slot.label}</label>
+                  <p className="muted appearance-image-hint">尚未啟用</p>
+                  <p className="muted appearance-image-hint">固定檔名：—</p>
+                </div>
+              );
+            }
 
-        <h4 style={{ margin: "16px 0 8px" }}>筆記功能圖示</h4>
-        {noteIcons.map((item) => (
-          <ImageFieldInput
-            key={item.field}
-            label={`${item.label}（${item.field}）`}
-            fixedFile={item.fixedFile}
-            value={form[item.field] as string}
-            fallback={item.fallback}
-            placeholder={item.placeholder}
-            onReplace={() => {
-              setActiveUploadField(item.field);
-              singleImportInput.current?.click();
-            }}
-            onUrlChange={(value) => setField(item.field, value)}
-          />
-        ))}
+            const config = importableByGridFile.get(slot.fixedFile || "");
+            if (!config) return null;
+            return (
+              <ImageFieldInput
+                key={config.fixedFile}
+                label={`${config.label}（${config.field}）`}
+                fixedFile={config.fixedFile}
+                value={form[config.field] as string}
+                fallback={config.fallback}
+                placeholder={config.placeholder}
+                onReplace={() => {
+                  setActiveUploadField(config.field);
+                  singleImportInput.current?.click();
+                }}
+                onUrlChange={(value) => setField(config.field, value)}
+              />
+            );
+          })}
+        </div>
 
         <div style={{ marginTop: 16 }}>
           <button
@@ -533,7 +574,7 @@ export function AppearanceSettingsPage() {
             從資料夾匯入圖示
           </button>
           <p className="muted" style={{ marginTop: 8 }}>
-            請選擇包含 1.png～5.png 與 a.png～f.png 的資料夾，系統會依檔名自動對應欄位。
+            請選擇包含 1.png、2.png、4.png、6.png 與 a.png～h.png 的資料夾，系統會依檔名自動對應欄位。
           </p>
         </div>
       </AdminCard>
@@ -687,15 +728,6 @@ export function AppearanceSettingsPage() {
 
       <AdminCard title="G. 前台 Header / 導覽列設定">
         <h4 style={{ margin: "0 0 8px" }}>品牌區</h4>
-        <label>品牌圖示網址（studentHeaderBrandLogoUrl）</label>
-        <input value={form.studentHeaderBrandLogoUrl} onChange={(e) => setField("studentHeaderBrandLogoUrl", e.target.value)} placeholder="https://… 或上傳（留空用內建 icon）" />
-        <div className="row" style={{ margin: "8px 0" }}>
-          <input ref={brandInput} type="file" accept={IMAGE_ACCEPT_TYPES} hidden
-            onChange={(e) => void onUpload("studentHeaderBrandLogoUrl", e.target.files?.[0])} />
-          <button type="button" className="admin-btn secondary" onClick={() => brandInput.current?.click()}>
-            上傳品牌圖示
-          </button>
-        </div>
         <label>品牌圖示大小 px（12–96）</label>
         <input type="number" min={12} max={96} value={form.studentHeaderBrandLogoSize} onChange={(e) => setNum("studentHeaderBrandLogoSize", e.target.value)} />
         <label>品牌文字（studentHeaderBrandText）</label>
