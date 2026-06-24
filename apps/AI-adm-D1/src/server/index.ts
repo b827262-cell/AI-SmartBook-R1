@@ -96,6 +96,7 @@ const READER_TOC_SCHEMA_VERSION = "smartbook-reader-toc-v1";
 const READER_TOC_SOURCE = "manual_admin_import" as const;
 const ONE_CLICK_QA_PROVIDER = "one_click_workflow";
 const ONE_CLICK_QA_MODEL = "qa_batch_v1";
+const ONE_CLICK_NOTE_SOURCE = "knowledge-point:";
 
 type WorkflowStepStatus = "pending" | "running" | "success" | "skipped" | "failed" | "fallback_success";
 type WorkflowStepKey =
