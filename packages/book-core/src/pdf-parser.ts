@@ -67,3 +67,39 @@ export async function parsePdfToContents(
     await parser.destroy();
   }
 }
+
+export interface ExtractWatermarkResult {
+  text: string;
+  extractedCode?: string;
+  extractedIsbn?: string;
+}
+
+/**
+ * Extracts text from the last page of a PDF and attempts to identify watermark info
+ * (e.g., Code like "51MG122110" and ISBN).
+ */
+export async function extractLastPdfPageText(filePath: string): Promise<ExtractWatermarkResult> {
+  const buffer = await readFile(filePath);
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+
+  try {
+    const result = await parser.getText();
+    if (result.pages.length === 0) {
+      return { text: "" };
+    }
+
+    const lastPage = result.pages[result.pages.length - 1];
+    const text = lastPage.text || "";
+
+    const codeMatch = text.match(/\b[A-Z0-9]{10}\b/);
+    const isbnMatch = text.match(/ISBN\s+[\d-]{10,17}/i);
+
+    return {
+      text: text.trim(),
+      extractedCode: codeMatch ? codeMatch[0] : undefined,
+      extractedIsbn: isbnMatch ? isbnMatch[0] : undefined
+    };
+  } finally {
+    await parser.destroy();
+  }
+}

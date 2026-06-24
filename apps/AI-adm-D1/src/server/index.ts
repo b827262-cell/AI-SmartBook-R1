@@ -3451,9 +3451,25 @@ type PdfToolSettings = {
   eraserEnabled: boolean;
 };
 
+type ReaderExtraFeatureSettings = {
+  textSelectionEnabled: boolean;
+  answerMaskEnabled: boolean;
+};
+
+type WatermarkSettings = {
+  enabled: boolean;
+  opacity: number;
+  source: "last_pdf_page" | "manual";
+  extractedCode?: string;
+  extractedIsbn?: string;
+  text?: string;
+};
+
 type ReaderFeatureSettings = {
   noteFeatures: NoteFeatureSettings;
   pdfTools: PdfToolSettings;
+  extraFeatures: ReaderExtraFeatureSettings;
+  watermark: WatermarkSettings;
 };
 
 const DEFAULT_READER_FEATURE_SETTINGS: ReaderFeatureSettings = {
@@ -3471,6 +3487,15 @@ const DEFAULT_READER_FEATURE_SETTINGS: ReaderFeatureSettings = {
     circleEnabled: true,
     stickyNoteEnabled: true,
     eraserEnabled: true
+  },
+  extraFeatures: {
+    textSelectionEnabled: true,
+    answerMaskEnabled: true
+  },
+  watermark: {
+    enabled: true,
+    opacity: 0.15,
+    source: "last_pdf_page"
   }
 };
 
@@ -3481,7 +3506,9 @@ function readReaderFeatureSettings(): ReaderFeatureSettings {
     const parsed = JSON.parse(raw) as Partial<ReaderFeatureSettings>;
     return {
       noteFeatures: { ...DEFAULT_READER_FEATURE_SETTINGS.noteFeatures, ...(parsed.noteFeatures ?? {}) },
-      pdfTools: { ...DEFAULT_READER_FEATURE_SETTINGS.pdfTools, ...(parsed.pdfTools ?? {}) }
+      pdfTools: { ...DEFAULT_READER_FEATURE_SETTINGS.pdfTools, ...(parsed.pdfTools ?? {}) },
+      extraFeatures: { ...DEFAULT_READER_FEATURE_SETTINGS.extraFeatures, ...(parsed.extraFeatures ?? {}) },
+      watermark: { ...DEFAULT_READER_FEATURE_SETTINGS.watermark, ...(parsed.watermark ?? {}) }
     };
   } catch {
     return DEFAULT_READER_FEATURE_SETTINGS;
@@ -3500,7 +3527,9 @@ app.put("/api/admin/settings/reader-features", (req, res) => {
   const current = readReaderFeatureSettings();
   const updated: ReaderFeatureSettings = {
     noteFeatures: { ...current.noteFeatures, ...(body.noteFeatures ?? {}) },
-    pdfTools: { ...current.pdfTools, ...(body.pdfTools ?? {}) }
+    pdfTools: { ...current.pdfTools, ...(body.pdfTools ?? {}) },
+    extraFeatures: { ...current.extraFeatures, ...(body.extraFeatures ?? {}) },
+    watermark: { ...current.watermark, ...(body.watermark ?? {}) }
   };
   repos.settings.set(READER_FEATURE_SETTINGS_KEY, JSON.stringify(updated));
   res.json(updated);
@@ -3509,6 +3538,32 @@ app.put("/api/admin/settings/reader-features", (req, res) => {
 // Student: GET reader feature settings (read-only, no auth)
 app.get("/api/student/settings/reader-features", (_req, res) => {
   res.json(readReaderFeatureSettings());
+});
+
+import { extractLastPdfPageText } from "@ai-smartbook/book-core";
+
+// Student: GET book watermark
+app.get("/api/student/books/:bookId/watermark", async (req, res) => {
+  const bookId = req.params.bookId;
+  const bookFiles = repos.files.findByBookId(bookId);
+  const pdfFile = bookFiles.find(f => f.fileType === "application/pdf" || f.fileName.toLowerCase().endsWith(".pdf"));
+  if (!pdfFile) {
+    return res.json({ watermarkText: "" });
+  }
+
+  try {
+    const watermarkResult = await extractLastPdfPageText(pdfFile.filePath);
+    let watermarkText = "";
+    if (watermarkResult.extractedCode) watermarkText += watermarkResult.extractedCode;
+    if (watermarkResult.extractedIsbn) {
+      if (watermarkText) watermarkText += " / ";
+      watermarkText += watermarkResult.extractedIsbn;
+    }
+    res.json({ watermarkText });
+  } catch (err) {
+    console.error("Failed to extract watermark:", err);
+    res.json({ watermarkText: "" });
+  }
 });
 
 const port = Number(process.env.ADMIN_API_PORT || 4300);
