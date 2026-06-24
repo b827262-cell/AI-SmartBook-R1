@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { DEFAULT_APPEARANCE, type AppearanceSettings } from "@ai-smartbook/schema";
 import { adminApi } from "../api";
 import { useAppearance } from "../appearance";
@@ -6,6 +6,125 @@ import { AdminPageHeader } from "../components/admin/AdminPageHeader";
 import { AdminCard } from "../components/admin/AdminCard";
 
 type Toast = { kind: "ok" | "err"; text: string } | null;
+
+type ImageUploadableField =
+  | "headerLogoUrl"
+  | "bannerIconUrl"
+  | "studentPageBackgroundImageUrl"
+  | "studentHeaderBrandLogoUrl"
+  | "studentHeaderHomeButtonIconUrl"
+  | "categoryIconUrl"
+  | "brandIconUrl"
+  | "textSelectionIconUrl"
+  | "smartNoteIconUrl"
+  | "pasteBackNoteIconUrl"
+  | "pasteBackAiNoteIconUrl"
+  | "screenshotAskAiIconUrl"
+  | "hideAnswerIconUrl";
+
+const IMAGE_ACCEPT_TYPES = "image/png,image/jpeg,image/webp,image/svg+xml";
+
+const IMPORTABLE_ICON_FIELDS = [
+  {
+    field: "headerLogoUrl",
+    label: "Logo 圖片（換圖）",
+    fixedFile: "1.png",
+    section: "系統圖片",
+    fallback: "iB",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "bannerIconUrl",
+    label: "Banner 圖片",
+    fixedFile: "2.png",
+    section: "系統圖片",
+    fallback: "📘",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "categoryIconUrl",
+    label: "分類圖示（categoryIcon）",
+    fixedFile: "3.png",
+    section: "系統圖片",
+    fallback: "📚",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "brandIconUrl",
+    label: "品牌圖示網址",
+    fixedFile: "4.png",
+    section: "系統圖片",
+    fallback: "🏷️",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "studentHeaderHomeButtonIconUrl",
+    label: "按鈕 icon 網址",
+    fixedFile: "5.png",
+    section: "系統圖片",
+    fallback: "🏠",
+    placeholder: "https://…（icon 模式為 image 時使用）"
+  },
+  {
+    field: "textSelectionIconUrl",
+    label: "文字選取",
+    fixedFile: "a.png",
+    section: "筆記功能圖示",
+    fallback: "📝",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "smartNoteIconUrl",
+    label: "智能筆記",
+    fixedFile: "b.png",
+    section: "筆記功能圖示",
+    fallback: "🧠",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "pasteBackNoteIconUrl",
+    label: "貼回筆記",
+    fixedFile: "c.png",
+    section: "筆記功能圖示",
+    fallback: "🗒️",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "pasteBackAiNoteIconUrl",
+    label: "貼回 AI 筆記",
+    fixedFile: "d.png",
+    section: "筆記功能圖示",
+    fallback: "🤖",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "screenshotAskAiIconUrl",
+    label: "截圖問 AI",
+    fixedFile: "e.png",
+    section: "筆記功能圖示",
+    fallback: "📸",
+    placeholder: "https://… 或上傳"
+  },
+  {
+    field: "hideAnswerIconUrl",
+    label: "遮答案",
+    fixedFile: "f.png",
+    section: "筆記功能圖示",
+    fallback: "🙈",
+    placeholder: "https://… 或上傳"
+  }
+] as const satisfies readonly {
+  field: ImageUploadableField;
+  label: string;
+  fixedFile: string;
+  section: "系統圖片" | "筆記功能圖示";
+  fallback: string;
+  placeholder: string;
+}[];
+
+type ImportableImageField = (typeof IMPORTABLE_ICON_FIELDS)[number]["field"];
+
+type ImportImageMap = Record<ImportableImageField, string>;
 
 /** Image with graceful fallback so an invalid URL never breaks the page. */
 function SafeIcon({ url, size, fallback }: { url: string; size: number; fallback: string }) {
@@ -31,15 +150,59 @@ function SafeIcon({ url, size, fallback }: { url: string; size: number; fallback
   );
 }
 
+function ImageFieldInput({
+  label,
+  fixedFile,
+  value,
+  fallback,
+  placeholder,
+  onUrlChange,
+  onReplace
+}: {
+  label: string;
+  fixedFile: string;
+  value: string;
+  fallback: string;
+  placeholder: string;
+  onUrlChange: (next: string) => void;
+  onReplace: () => void;
+}) {
+  return (
+    <div className="appearance-image-item">
+      <label>{label}</label>
+      <p className="muted appearance-image-hint">固定檔名：{fixedFile}</p>
+      <input value={value} onChange={(e) => onUrlChange(e.target.value)} placeholder={placeholder} />
+      <div className="row" style={{ margin: "6px 0 10px" }}>
+        <button type="button" className="admin-btn secondary" onClick={onReplace}>
+          更換
+        </button>
+      </div>
+      <div className="appearance-image-preview">
+        <SafeIcon url={value} size={40} fallback={fallback} />
+      </div>
+    </div>
+  );
+}
+
 export function AppearanceSettingsPage() {
   const { settings, refresh } = useAppearance();
   const [form, setForm] = useState<AppearanceSettings>(settings);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
+  const [activeUploadField, setActiveUploadField] = useState<ImageUploadableField | null>(null);
   const logoInput = useRef<HTMLInputElement>(null);
   const iconInput = useRef<HTMLInputElement>(null);
   const bgInput = useRef<HTMLInputElement>(null);
   const brandInput = useRef<HTMLInputElement>(null);
+  const singleImportInput = useRef<HTMLInputElement>(null);
+  const folderImportInput = useRef<HTMLInputElement>(null);
+
+  const importableByFileName = new Map<string, (typeof IMPORTABLE_ICON_FIELDS)[number]>(
+    IMPORTABLE_ICON_FIELDS.map((item) => [item.fixedFile.toLowerCase(), item])
+  );
+
+  const systemIcons = IMPORTABLE_ICON_FIELDS.filter((item) => item.section === "系統圖片");
+  const noteIcons = IMPORTABLE_ICON_FIELDS.filter((item) => item.section === "筆記功能圖示");
 
   // Seed the form once settings are loaded from the server.
   useEffect(() => setForm(settings), [settings]);
@@ -69,23 +232,101 @@ export function AppearanceSettingsPage() {
     }
   }
 
-  async function onUpload(
-    field:
-      | "headerLogoUrl"
-      | "bannerIconUrl"
-      | "studentPageBackgroundImageUrl"
-      | "studentHeaderBrandLogoUrl",
-    file: File | undefined
-  ) {
+  async function uploadImage(file: File | undefined) {
+    if (!file) return null;
+    const { url } = await adminApi.uploadAppearanceImage(file);
+    return url;
+  }
+
+  async function onUpload(field: ImageUploadableField, file: File | undefined) {
     if (!file) return;
     setToast(null);
     try {
-      const { url } = await adminApi.uploadAppearanceImage(file);
+      const url = await uploadImage(file);
+      if (!url) throw new Error("無法取得上傳結果");
       setField(field, url as AppearanceSettings[typeof field]);
       setToast({ kind: "ok", text: "圖片已上傳，請記得按儲存" });
     } catch (e) {
       setToast({ kind: "err", text: `上傳失敗：${e instanceof Error ? e.message : String(e)}` });
     }
+  }
+
+  async function onSingleImagePick(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    const field = activeUploadField;
+    if (field) {
+      if (file) {
+        await onUpload(field, file);
+      }
+      setActiveUploadField(null);
+    }
+    event.target.value = "";
+  }
+
+  async function onImportIconBatch(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) {
+      event.target.value = "";
+      return;
+    }
+    setToast(null);
+
+    const uploaded: Partial<ImportImageMap> = {};
+    const notMatched: string[] = [];
+    const failedUploads: string[] = [];
+    const matchedSet = new Set<ImageUploadableField>();
+
+    for (const file of files) {
+      const config = importableByFileName.get(file.name.toLowerCase());
+      if (!config) {
+        notMatched.push(file.name);
+        continue;
+      }
+
+      const field = config.field;
+      if (matchedSet.has(field)) {
+        notMatched.push(file.name);
+        continue;
+      }
+
+      try {
+        const url = await uploadImage(file);
+        if (url) {
+          uploaded[field] = url;
+          matchedSet.add(field);
+        }
+      } catch {
+        failedUploads.push(file.name);
+      }
+    }
+
+    const importResultCount = Object.keys(uploaded).length;
+    if (importResultCount > 0) {
+      setForm((f) => ({ ...f, ...uploaded }));
+    }
+
+    const missing = IMPORTABLE_ICON_FIELDS.filter((item) => !matchedSet.has(item.field)).map((item) => item.fixedFile);
+    const summary: string[] = [];
+    if (importResultCount > 0) {
+      summary.push(`已匯入 ${importResultCount} 個圖示。`);
+    } else {
+      summary.push("未匯入任何圖示。");
+    }
+
+    if (missing.length > 0 && missing.length < IMPORTABLE_ICON_FIELDS.length) {
+      summary.push(`部分檔案未找到：${missing.join("、")}。`);
+    } else if (missing.length === IMPORTABLE_ICON_FIELDS.length) {
+      summary.push(`未找到可對應檔案：${missing.join("、")}。`);
+    }
+    if (notMatched.length > 0) {
+      summary.push(`已略過未對應檔案：${notMatched.join("、")}。`);
+    }
+    if (failedUploads.length > 0) {
+      summary.push(`上傳失敗：${failedUploads.join("、")}。`);
+    }
+
+    setToast({ kind: importResultCount > 0 ? "ok" : "err", text: summary.join("\n") || "匯入完成" });
+    event.target.value = "";
   }
 
   function resetDefaults() {
@@ -97,7 +338,7 @@ export function AppearanceSettingsPage() {
     <div>
       <AdminPageHeader
         title="介面設定"
-        subtitle="自訂後台導覽、Header 與首頁 Banner 的顯示內容（無需改程式碼）"
+        subtitle="自訂後台、學生端與 AI 相關功能的圖片與圖示。上傳格式：PNG / SVG / WebP / JPG（建議 icon 24x24 或 32x32）"
         actions={
           <>
             <button className="admin-btn ghost" onClick={resetDefaults} disabled={saving}>
@@ -157,9 +398,11 @@ export function AppearanceSettingsPage() {
         <label>Logo 圖片網址（headerLogoUrl）</label>
         <input value={form.headerLogoUrl} onChange={(e) => setField("headerLogoUrl", e.target.value)} placeholder="https://… 或上傳" />
         <div className="row" style={{ margin: "8px 0" }}>
-          <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden
+          <input ref={logoInput} type="file" accept={IMAGE_ACCEPT_TYPES} hidden
             onChange={(e) => void onUpload("headerLogoUrl", e.target.files?.[0])} />
-          <button type="button" className="admin-btn secondary" onClick={() => logoInput.current?.click()}>上傳圖片</button>
+          <button type="button" className="admin-btn secondary" onClick={() => logoInput.current?.click()}>
+            上傳圖片
+          </button>
         </div>
 
         <label>Logo 大小 px（headerLogoSize）</label>
@@ -179,9 +422,11 @@ export function AppearanceSettingsPage() {
         <label>Banner 圖片網址（bannerIconUrl）</label>
         <input value={form.bannerIconUrl} onChange={(e) => setField("bannerIconUrl", e.target.value)} placeholder="https://… 或上傳" />
         <div className="row" style={{ margin: "8px 0" }}>
-          <input ref={iconInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden
+          <input ref={iconInput} type="file" accept={IMAGE_ACCEPT_TYPES} hidden
             onChange={(e) => void onUpload("bannerIconUrl", e.target.files?.[0])} />
-          <button type="button" className="admin-btn secondary" onClick={() => iconInput.current?.click()}>上傳圖片</button>
+          <button type="button" className="admin-btn secondary" onClick={() => iconInput.current?.click()}>
+            上傳圖片
+          </button>
         </div>
 
         <label>Banner 圖標大小 px（bannerIconSize）</label>
@@ -206,7 +451,76 @@ export function AppearanceSettingsPage() {
         <input value={form.assistantButtonText} onChange={(e) => setField("assistantButtonText", e.target.value)} />
       </AdminCard>
 
-      <AdminCard title="D. 前台首頁版型設定">
+      <AdminCard title="D. ICO / 圖片設定">
+        <p className="muted" style={{ marginTop: 0 }}>
+          自訂後台、學生端與 AI 相關功能的圖片與圖示。上傳格式：PNG / SVG / WebP / JPG（建議 icon 24x24 或 32x32）。
+        </p>
+
+        <input
+          ref={singleImportInput}
+          type="file"
+          accept={IMAGE_ACCEPT_TYPES}
+          hidden
+          onChange={(e) => void onSingleImagePick(e)}
+        />
+        <input
+          ref={folderImportInput}
+          type="file"
+          accept={IMAGE_ACCEPT_TYPES}
+          multiple
+          hidden
+          onChange={(e) => void onImportIconBatch(e)}
+        />
+
+        <h4 style={{ margin: "0 0 8px" }}>系統圖片</h4>
+        {systemIcons.map((item) => (
+          <ImageFieldInput
+            key={item.field}
+            label={`${item.label}（${item.field}）`}
+            fixedFile={item.fixedFile}
+            value={form[item.field] as string}
+            fallback={item.fallback}
+            placeholder={item.placeholder}
+            onReplace={() => {
+              setActiveUploadField(item.field);
+              singleImportInput.current?.click();
+            }}
+            onUrlChange={(value) => setField(item.field, value)}
+          />
+        ))}
+
+        <h4 style={{ margin: "16px 0 8px" }}>筆記功能圖示</h4>
+        {noteIcons.map((item) => (
+          <ImageFieldInput
+            key={item.field}
+            label={`${item.label}（${item.field}）`}
+            fixedFile={item.fixedFile}
+            value={form[item.field] as string}
+            fallback={item.fallback}
+            placeholder={item.placeholder}
+            onReplace={() => {
+              setActiveUploadField(item.field);
+              singleImportInput.current?.click();
+            }}
+            onUrlChange={(value) => setField(item.field, value)}
+          />
+        ))}
+
+        <div style={{ marginTop: 16 }}>
+          <button
+            type="button"
+            className="admin-btn secondary"
+            onClick={() => folderImportInput.current?.click()}
+          >
+            從資料夾匯入圖示
+          </button>
+          <p className="muted" style={{ marginTop: 8 }}>
+            請選擇包含 1.png～5.png 與 a.png～f.png 的資料夾，系統會依檔名自動對應欄位。
+          </p>
+        </div>
+      </AdminCard>
+
+      <AdminCard title="E. 前台首頁版型設定">
         <h4 style={{ margin: "0 0 8px" }}>Hero 版型</h4>
         <label>Hero 版型（studentHeroVariant）</label>
         <select
@@ -290,7 +604,7 @@ export function AppearanceSettingsPage() {
         </label>
       </AdminCard>
 
-      <AdminCard title="E. 前台主頁背景設定">
+      <AdminCard title="F. 前台主頁背景設定">
         <p className="muted" style={{ marginTop: 0 }}>
           建議正式書城首頁使用白底；若要活動頁或品牌頁，可改成漸層或背景圖。
         </p>
@@ -319,9 +633,11 @@ export function AppearanceSettingsPage() {
         <label>背景圖片網址（studentPageBackgroundImageUrl）</label>
         <input value={form.studentPageBackgroundImageUrl} onChange={(e) => setField("studentPageBackgroundImageUrl", e.target.value)} placeholder="https://… 或上傳" />
         <div className="row" style={{ margin: "8px 0" }}>
-          <input ref={bgInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden
+          <input ref={bgInput} type="file" accept={IMAGE_ACCEPT_TYPES} hidden
             onChange={(e) => void onUpload("studentPageBackgroundImageUrl", e.target.files?.[0])} />
-          <button type="button" className="admin-btn secondary" onClick={() => bgInput.current?.click()}>上傳背景圖</button>
+          <button type="button" className="admin-btn secondary" onClick={() => bgInput.current?.click()}>
+            上傳背景圖
+          </button>
         </div>
 
         <label>背景圖填充（studentPageBackgroundImageFit）</label>
@@ -351,14 +667,16 @@ export function AppearanceSettingsPage() {
         </select>
       </AdminCard>
 
-      <AdminCard title="F. 前台 Header / 導覽列設定">
+      <AdminCard title="G. 前台 Header / 導覽列設定">
         <h4 style={{ margin: "0 0 8px" }}>品牌區</h4>
         <label>品牌圖示網址（studentHeaderBrandLogoUrl）</label>
         <input value={form.studentHeaderBrandLogoUrl} onChange={(e) => setField("studentHeaderBrandLogoUrl", e.target.value)} placeholder="https://… 或上傳（留空用內建 icon）" />
         <div className="row" style={{ margin: "8px 0" }}>
-          <input ref={brandInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden
+          <input ref={brandInput} type="file" accept={IMAGE_ACCEPT_TYPES} hidden
             onChange={(e) => void onUpload("studentHeaderBrandLogoUrl", e.target.files?.[0])} />
-          <button type="button" className="admin-btn secondary" onClick={() => brandInput.current?.click()}>上傳品牌圖示</button>
+          <button type="button" className="admin-btn secondary" onClick={() => brandInput.current?.click()}>
+            上傳品牌圖示
+          </button>
         </div>
         <label>品牌圖示大小 px（12–96）</label>
         <input type="number" min={12} max={96} value={form.studentHeaderBrandLogoSize} onChange={(e) => setNum("studentHeaderBrandLogoSize", e.target.value)} />

@@ -11,6 +11,8 @@ export const appearanceSettingsSchema = z.object({
   // Header / brand
   systemName: z.string().default("iBrain 智匯"),
   headerLogoUrl: z.string().default(""),
+  categoryIconUrl: z.string().default(""),
+  brandIconUrl: z.string().default(""),
   headerLogoSize: z.number().int().min(8).max(96).default(24),
   headerLogoTextGap: z.number().int().min(0).max(48).default(8),
   // Banner / hero
@@ -59,6 +61,12 @@ export const appearanceSettingsSchema = z.object({
   studentHeaderHomeButtonHorizontalPadding: z.number().int().min(4).max(48).default(14),
   studentHeaderHomeButtonIconMode: z.enum(["default", "image"]).default("default"),
   studentHeaderHomeButtonIconUrl: z.string().default(""),
+  textSelectionIconUrl: z.string().default(""),
+  smartNoteIconUrl: z.string().default(""),
+  pasteBackNoteIconUrl: z.string().default(""),
+  pasteBackAiNoteIconUrl: z.string().default(""),
+  screenshotAskAiIconUrl: z.string().default(""),
+  hideAnswerIconUrl: z.string().default(""),
   studentHeaderHomeButtonIconSize: z.number().int().min(8).max(40).default(14),
 
   // --- Student homepage layout (B. Book list) ---
