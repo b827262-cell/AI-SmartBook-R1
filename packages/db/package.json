@@ -15,9 +15,11 @@
   "devDependencies": {
     "typescript": "latest",
     "tsx": "latest",
+    "@types/node": "latest",
     "@types/better-sqlite3": "latest"
   },
   "dependencies": {
+    "@ai-smartbook/schema": "workspace:*",
     "drizzle-orm": "latest",
     "better-sqlite3": "latest"
   }
