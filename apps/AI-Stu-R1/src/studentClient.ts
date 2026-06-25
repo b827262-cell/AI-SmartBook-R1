@@ -4,6 +4,18 @@ interface BookDetail extends Book {
   chapters: BookChapter[];
 }
 
+export interface StudentNote {
+  id: string;
+  bookId: string;
+  type: "text" | "ai_answer" | "canvas";
+  title: string | null;
+  content: string;
+  chapterId: string | null;
+  pageNumber: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: init?.body ? { "Content-Type": "application/json" } : undefined,
@@ -33,5 +45,13 @@ export const studentClient = {
     http<{ answer: string; matchedContentIds: string[]; chatMode: string }>(
       `/api/student/books/${bookId}/chat`,
       { method: "POST", body: JSON.stringify({ question }) }
-    )
+    ),
+
+  listNotes: (bookId: string) =>
+    http<{ notes: StudentNote[] }>(`/api/student/books/${bookId}/notes`),
+
+  deleteNote: (bookId: string, noteId: string) =>
+    http<{ deleted: boolean }>(`/api/student/books/${bookId}/notes/${noteId}`, {
+      method: "DELETE"
+    })
 };
