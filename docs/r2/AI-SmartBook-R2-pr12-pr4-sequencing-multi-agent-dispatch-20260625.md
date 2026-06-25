@@ -1,235 +1,125 @@
-# AI-SmartBook-R2 PR #12 / PR #4 Sequencing Multi-Agent Dispatch
+# AI-SmartBook-R2 PR #12 & PR #4 Sequencing Multi-Agent Dispatch
 
-Date: 2026-06-25
-Repository: `b827262-cell/AI-SmartBook-R1`
-Branch: `docs/r2-cleanup-complete-next-phase-dispatch-20260625`
-Status: `ready-for-agent-execution`
+**日期**：2026-06-25  
+**儲存庫**：`b827262-cell/AI-SmartBook-R1`  
+**分支**：`docs/r2-cleanup-complete-next-phase-dispatch-20260625`  
+**狀態**：`dispatch-ready`  
 
-## 1. Purpose
+---
 
-This document records the decision that PR #12 and PR #4 must not be handled as the same operation.
+## 1. 背景與目的
 
-PR #12 is a documentation-only PR targeting the protected `master` branch. It should be completed first.
+在 AI-SmartBook-R2 專案清理與下一階段多代理人調度中，目前面臨兩個需要協調的 Pull Request：
 
-PR #4 is an older feature PR targeting `main`, not `master`. It is not part of the current final cleanup PR flow and should not be merged into `main` or `master` during this step.
+1. **PR #12 (本分支 PR)**：預期將包含 R2 最終清理狀態及後續規劃的文檔分支 `docs/r2-cleanup-complete-next-phase-dispatch-20260625` 合併進 `master`。
+2. **PR #4 (stale PR)**：現有的公開 PR，分支為 `feat/student-category-cover-reader-chat`，原定合併目標為 `main`。
 
-## 2. Current PR status
+由於 `master` 分支目前已是唯一的 Source of Truth 並且啟用了分支保護，所有代碼與文件合併必須有序進行。本文件旨在定義 **PR #12** 與 **PR #4** 的執行順序（Sequencing）與多代理人調度方案，以確保專案基底的穩定性。
 
-## 2.1 PR #12 — final next-phase dispatch docs
+---
 
-| Field | Value |
-| --- | --- |
-| PR | `#12` |
-| Title | `docs(r2): add cleanup complete next phase dispatch` |
-| Base | `master` |
-| Head | `docs/r2-cleanup-complete-next-phase-dispatch-20260625` |
-| State | `open` |
-| Mergeable | `true` |
-| Draft | `false` |
-| Commits | `3` |
-| Changed files | `2` |
-| Additions | `359` |
-| Deletions | `0` |
+## 2. PR 現況與衝突分析
 
-Decision:
+### 2.1 PR #12 (R2 最終清理與下一階段調度文檔)
+* **來源分支**：`docs/r2-cleanup-complete-next-phase-dispatch-20260625`
+* **目標分支**：`master`
+* **變更類型**：純文檔變更（Docs-only）
+* **影響分析**：安全，無程式碼衝突，是後續所有代理人執行下一步的指引依據。
 
-```text
-PR #12 should be merged first after confirming changed files are docs-only.
+### 2.2 PR #4 (學生分類封面與讀者對話)
+* **來源分支**：`origin/feat/student-category-cover-reader-chat`
+* **目標分支**：`main`（錯誤的舊目標，應為 `master`）
+* **獨特提交 (5 commits)**：
+  1. `5d2070da` - `docs: add TUF ASUS tailscale no-reboot fallback task`
+  2. `f3ed5e5e` - `docs: add TUF ASUS tailscale route repair task`
+  3. `4c5cdf43` - `docs: add TUF ASUS old services shutdown task`
+  4. `85152bbd` - `feat: expose institutional flow report in antiG portal`
+  5. `6770122e` - `docs: add macbook student frontend runbook`
+* **變更分析**：
+  * 該分支與 `master` 相比，除了上述 5 個 commit 之外，其餘較早的 commit 已合入 `master`。
+  * 這 5 個獨特提交包含 TUF ASUS 運維文檔及學生端 AntiG 入口/機構流頁面等代碼（涉及約 1974 行新增代碼與文件）。
+  * 目前 PR #4 錯誤指向已廢棄或非主線的 `main` 分支，且與歷經 R2 大整合後的 `master` 存在極高的潛在代碼衝突風險，絕不能直接合併至 `main` 或強制 merge 到 `master`。
+
+---
+
+## 3. 執行順序規劃 (Sequencing Strategy)
+
+為了保證主線 `master` 的乾淨與穩定，必須嚴格執行以下順序：
+
+```mermaid
+graph TD
+    A[步驟 1: 合併 PR #12] -->|文檔就緒，確立調度規範| B(步驟 2: 審計 PR #4 程式碼與衝突)
+    B -->|確認保留內容| C[步驟 3: Cherry-pick 5 個獨特提交至新分支]
+    C -->|解決衝突與 Typecheck 驗證| D[步驟 4: 開啟新 PR 至 master 並關閉舊 PR #4]
 ```
 
-Expected action:
+### 3.1 步驟 1：優先合併 PR #12
+* **動作**：將 `docs/r2-cleanup-complete-next-phase-dispatch-20260625` 合併進 `master`，使所有後續的代理人調度計劃、剩餘分支報告及本順序表正式歸檔。
+* **原因**：PR #12 為純文檔，無破壞性變更，能為下一步提供明確的工作規則。
 
-1. Open PR #12.
-2. Check `Files changed`.
-3. Confirm only `docs/r2/` files are changed.
-4. Merge PR #12.
-5. If branch protection blocks the merge and the owner approves, use bypass merge because this is documentation-only.
-6. After merge, delete only:
+### 3.2 步驟 2：PR #4 唯讀審計
+* **動作**：代理人對 `feat/student-category-cover-reader-chat` 進行完整審計，確認這 5 個 commit 的代碼與文檔是否仍為專案所需。
 
-```text
-docs/r2-cleanup-complete-next-phase-dispatch-20260625
-```
+### 3.3 步驟 3：移植與衝突解決
+* **動作**：
+  1. 基於最新已合併 PR #12 的 `master` 分支，建立全新的功能分支（例如 `feat/r2-student-category-cover-integration`）。
+  2. 將 PR #4 的 5 個獨特提交逐一進行 `git cherry-pick` 到新分支。
+  3. 針對代碼衝突（尤其是學生端 `App.tsx`、路由與樣式表）進行人工排解，並確保與 R2 新架構相容。
 
-## 2.2 PR #4 — old student category / reader / chat feature PR
+### 3.4 步驟 4：驗證與開啟新 PR
+* **動作**：
+  1. 在新分支執行完整建置驗證：
+     ```bash
+     pnpm --filter AI-adm-D1 typecheck
+     pnpm --filter AI-adm-D1 build
+     pnpm --filter AI-Stu-R1 typecheck
+     pnpm --filter AI-Stu-R1 build
+     ```
+  2. 驗證無誤後，向 `master` 開啟新的 PR。
+  3. 同時，關閉指向 `main` 的舊 **PR #4**，並註記：
+     > "Superseded by PR #12 sequencing plan. The 5 unique commits have been cherry-picked and integrated into master via the new PR."
+  4. 刪除舊的 `feat/student-category-cover-reader-chat` 遠端分支。
 
-| Field | Value |
-| --- | --- |
-| PR | `#4` |
-| Title | `feat(stu): add category library, cover UX, reader, and chat history` |
-| Base | `main` |
-| Head | `feat/student-category-cover-reader-chat` |
-| State | `open` |
-| Mergeable | `true` |
-| Commits | `61` |
-| Changed files | `108` |
-| Additions | `17718` |
-| Deletions | `414` |
+---
 
-Decision:
+## 4. 多代理人調度分工 (Multi-Agent Assignment)
 
-```text
-PR #4 must not be merged as part of the PR #12 docs cleanup operation.
-```
+### 4.1 Agent 1 — Codex / GPT-5.5 (PR #12 執行人)
+* **職責**：
+  * 開啟 PR #12 將此調度文檔合入 `master`。
+  * 取得 Owner 審查同意後完成合併。
 
-Reason:
+### 4.2 Agent 2 — AGY / Gemini (PR #4 唯讀審計)
+* **職責**：
+  * 審計 `feat/student-category-cover-reader-chat` 中變更的 12 個檔案。
+  * 確認 TUF ASUS 相關運維文檔及 AntiG Portal 功能在當前 R2 架構下的相容性。
+  * 輸出審計報告至 `docs/r2/`。
 
-1. PR #4 targets `main`, while the repository source of truth is now the protected `master` branch.
-2. PR #4 is a large source-code feature PR, not documentation-only.
-3. R2 main integration was already completed through PR #5 and later cleanup PRs.
-4. Merging PR #4 now would reintroduce stale branch history and duplicate changes.
+### 4.3 Agent 3 — Claude Sonnet 4.6 (衝突解決與集成負責人)
+* **職責**：
+  * 執行 cherry-pick、解決程式碼衝突與整合工作。
+  * 確保新分支的程式碼風格與路由設計符合 R2 模組化規範。
+  * 提交集成後的驗證結果並開啟新 PR。
 
-Recommended action:
+### 4.4 Agent 4 — Codex-5.3 Spark (基準與型別驗證)
+* **職責**：
+  * 針對步驟 4 產出的新分支與 `master` 進行獨立的建置與編譯驗證。
 
-After PR #12 is merged and the docs branch is deleted, review PR #4 as a stale PR candidate.
+---
 
-If confirmed superseded by PR #5 and later cleanup PRs, close PR #4 with this comment:
-
-```text
-Superseded by PR #5 final R2 integration and later cleanup PRs. Closing this stale PR to avoid duplicate branch history.
-```
-
-Do not merge PR #4 without explicit owner approval and a new review against `master`.
-
-## 3. Multi-agent assignment
-
-## 3.1 Agent 1 — Codex / GPT-5.5: PR #12 docs completion
-
-### Mission
-
-Complete PR #12 only.
-
-### Rules
-
-1. Do not touch PR #4.
-2. Confirm PR #12 is docs-only.
-3. Do not modify source code.
-4. Do not touch `apps/`, `packages/`, `scripts/`, `deploy/`, `package.json`, or `pnpm-lock.yaml`.
-5. Merge PR #12 only after confirming docs-only changes.
-6. If blocked by branch protection, use owner-approved bypass only for PR #12.
-7. After PR #12 merge, delete only:
-
-```text
-docs/r2-cleanup-complete-next-phase-dispatch-20260625
-```
-
-### Required report
-
-Return a Traditional Chinese termination report:
+## 5. 終止回報範本
 
 ```md
-## 終止回報
+## 終止回報 (PR #12 & PR #4 順序調度)
 
-- status: success / failure / blocker / permission-halt
-- PR: #12
-- PR URL:
-- merge SHA:
-- deleted branch:
-- source code changed: no
-- failure:
-- blocker:
-- permission-halt:
+- **status**: success / failure / blocker / permission-halt
+- **repo**: b827262-cell/AI-SmartBook-R1
+- **PR #12 狀態**: 合併完成 / 待合併
+- **PR #4 狀態**: 已關閉並移植 / 待處理
+- **最新 master SHA**:
+- **原始碼變更**: 是 / 否
+
+### 已完成事項
+1. [新增調度文件] 已建立 `docs/r2/AI-SmartBook-R2-pr12-pr4-sequencing-multi-agent-dispatch-20260625.md`。
+2. ...
 ```
-
-## 3.2 Agent 2 — AGY / Gemini: PR #4 stale confirmation
-
-### Mission
-
-Confirm whether PR #4 is stale and superseded by PR #5 / PR #11.
-
-### Rules
-
-1. Read-only unless explicitly assigned to close PR #4.
-2. Do not merge PR #4.
-3. Do not retarget PR #4.
-4. Do not delete `feat/student-category-cover-reader-chat` unless owner approves.
-
-### Required checks
-
-Confirm:
-
-```text
-PR #4 base is main
-PR #4 is source-code heavy
-PR #4 scope overlaps with PR #5 R2 final integration
-PR #4 should not be merged into main/master now
-```
-
-### Required output
-
-Return table:
-
-```text
-PR | base | head | scope | risk | recommended action
-```
-
-Recommended action should usually be:
-
-```text
-close stale PR after owner approval
-```
-
-## 3.3 Agent 3 — Claude Sonnet 4.6: historical scope comparison
-
-### Mission
-
-Compare PR #4 scope conceptually against completed PR #5 / R2 master state.
-
-### Rules
-
-1. Read-only analysis.
-2. Do not merge PR #4.
-3. Do not edit source code.
-4. Do not close PR #4 unless reassigned.
-
-### Output
-
-Prepare a short Traditional Chinese summary:
-
-```text
-PR #4 overlap analysis
-whether PR #4 is superseded
-what, if anything, should be salvaged later
-recommended close / retain decision
-```
-
-## 3.4 Agent 4 — GPT-5.5 final coordinator
-
-### Mission
-
-After PR #12 is merged and AGY / Claude confirm PR #4 status, coordinate the final decision.
-
-### Decision table
-
-```text
-item | action | reason | owner approval needed
-```
-
-Expected result:
-
-```text
-PR #12 = merge and delete docs branch
-PR #4 = close as stale, do not merge
-feat/student-category-cover-reader-chat = retain or delete only after owner approval
-```
-
-## 4. Strict sequencing rule
-
-Use this order:
-
-```text
-1. Merge PR #12 first.
-2. Delete PR #12 docs branch.
-3. Review PR #4 as stale.
-4. Close PR #4 only after owner approval.
-5. Do not merge PR #4.
-```
-
-## 5. Final conclusion
-
-Status: `sequencing-required`
-
-PR #12 and PR #4 should not be handled together as equivalent merge tasks.
-
-PR #12 is a docs-only final cleanup handoff PR into `master` and should be completed first.
-
-PR #4 is an old source-code PR into `main`; it should be treated as stale/superseded and closed after confirmation, not merged.
