@@ -291,3 +291,36 @@ close stale PR
 Status: `multi-agent-dispatch-ready`
 
 This workflow allows multiple agents to work in parallel while keeping write and delete operations controlled. The protected `master` branch remains the only source of truth for new development.
+
+## 12. Fire it up 最新 master typecheck/build 驗證（2026-06-25）
+
+- 執行時間：`2026-06-25 14:02:44 +0800`
+- 目標分支：`master`
+- Master SHA：`d2c0ec6`
+- 驗證模式：只讀
+
+### 執行命令
+
+```bash
+git fetch --all --prune
+git checkout master
+git pull --ff-only origin master
+HOME=/tmp pnpm --filter AI-adm-D1 typecheck
+HOME=/tmp pnpm --filter AI-adm-D1 build
+HOME=/tmp pnpm --filter AI-Stu-R1 typecheck
+HOME=/tmp pnpm --filter AI-Stu-R1 build
+```
+
+### 結果
+
+| command | result | log summary | blocker |
+| --- | --- | --- | --- |
+| `HOME=/tmp pnpm --filter AI-adm-D1 typecheck` | success | `tsc --noEmit` 成功完成 | none |
+| `HOME=/tmp pnpm --filter AI-adm-D1 build` | success | `vite build` 完成，輸出 `dist/index.html`、css/js bundle | none |
+| `HOME=/tmp pnpm --filter AI-Stu-R1 typecheck` | success | `tsc --noEmit` 成功完成 | none |
+| `HOME=/tmp pnpm --filter AI-Stu-R1 build` | success | `vite build` 完成；輸出 `dist/index.html`、`pdf.worker.min-qwK7q_zL.mjs`、`index-BAQGuijA.js`；chunk 大小超過 500KB warning | non-blocking |
+
+### 結論
+
+- 最新 master 驗證通過：`typecheck` 與 `build` 四項指令皆成功。
+- 僅有 `AI-Stu-R1 build` 出現 bundle size warning（非阻塞）。
