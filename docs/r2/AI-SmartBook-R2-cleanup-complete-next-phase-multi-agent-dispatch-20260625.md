@@ -312,3 +312,9 @@ Each agent must return a Traditional Chinese report:
 Status: `success / cleanup complete / next phase ready`
 
 The R2 GitHub cleanup work is complete. The next phase is not branch cleanup; it is controlled follow-up feature development, starting with one-click solve planning and implementation from the latest protected `master`.
+
+## 10. 交接（Fire it up）與驗證建議
+
+- 目前分支 `docs/r2-cleanup-complete-next-phase-dispatch-20260625` 已建立，文件內容聚焦後續多代理人執行順序與分支保留策略，屬於後續階段啟動文檔。
+- 建議在開始新功能工作前，依本文件 5.2 的 baseline validation 指令先行做一次「最新 `master` 驗證」；本檔尚未新增驗證結果輸出，僅保留驗證流程與回報要求。
+- 下一步可由 Codex 開始執行 `docs/r2/AI-SmartBook-R2-master-baseline-validation-before-one-click-solve-20260625.md` 的 build/typecheck 驗證任務並回填結果。
