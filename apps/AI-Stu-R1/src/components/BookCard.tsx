@@ -16,6 +16,9 @@ export function BookCard({ book }: { book: Book }) {
           <Link className="btn ghost" to={`/books/${book.id}/chat`}>
             問書本
           </Link>
+          <Link className="btn ghost" to={`/notes?bookId=${book.id}`}>
+            查看筆記
+          </Link>
         </div>
       </div>
     </article>
